@@ -22,6 +22,7 @@ from rich.table import Table
 
 from forgent.memory import MemoryStore, MemoryType
 from forgent.orchestrator import Orchestrator
+from forgent.progress import cli_progress
 from forgent.registry.loader import Registry, Ecosystem
 from forgent.theme import COLORS, console
 
@@ -43,11 +44,18 @@ def run(
     task: str = typer.Argument(..., help="The task to run, in plain English."),
     show_decision: bool = typer.Option(True, help="Print the routing decision before output."),
     auto_forge: bool = typer.Option(False, "--auto-forge", help="Synthesize a fresh specialist if router confidence is low."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Disable the live progress spinner."),
 ):
     """Run a task end-to-end: route -> dispatch -> remember."""
     orch = Orchestrator(db_path=_db_path())
     console.print(Panel(task, title="[title]task[/title]", border_style=COLORS.border_strong))
-    result = orch.run(task, auto_forge=auto_forge)
+
+    if quiet:
+        result = orch.run(task, auto_forge=auto_forge)
+    else:
+        with cli_progress(console=console) as progress:
+            result = orch.run(task, auto_forge=auto_forge, progress=progress)
+
     if show_decision:
         d = result.decision
         console.print(

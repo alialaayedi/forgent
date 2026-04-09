@@ -131,3 +131,49 @@ def test_mcp_server_module_imports():
     # Smoke check that the FastMCP server module loads and tools are registered
     from forgent.mcp_server import mcp
     assert mcp.name == "forgent"
+
+
+def test_progress_emitter_receives_all_steps(tmp_path):
+    """Verify the orchestrator calls every progress checkpoint at least once."""
+    from forgent.progress import Progress
+
+    received: list[tuple[str, tuple, dict]] = []
+
+    class RecordingProgress:
+        def __getattr__(self, name):
+            def _capture(*args, **kwargs):
+                received.append((name, args, kwargs))
+            return _capture
+
+        def to_markdown(self):
+            return ""
+
+    orch, fake = _fresh_orchestrator(tmp_path)
+    asyncio.run(orch.run_async("review my Python code", progress=RecordingProgress()))
+
+    method_names = [name for name, _args, _kwargs in received]
+    # Every checkpoint must have fired
+    assert "start" in method_names
+    assert "recall" in method_names
+    assert "route" in method_names
+    assert "dispatch" in method_names
+    assert "dispatch_done" in method_names
+    assert "persist" in method_names
+    assert "done" in method_names
+
+
+def test_mcp_context_progress_builds_markdown_trace(tmp_path):
+    """The MCP-side emitter accumulates a markdown trace even with no ctx."""
+    from forgent.progress import MCPContextProgress
+
+    progress = MCPContextProgress(ctx=None)  # no MCP client — just trace mode
+
+    orch, fake = _fresh_orchestrator(tmp_path)
+    asyncio.run(orch.run_async("design a webhook handler", progress=progress))
+
+    trace = progress.to_markdown()
+    assert "## trace" in trace
+    assert "task" in trace
+    assert "route" in trace
+    assert "dispatch" in trace
+    assert "persist" in trace

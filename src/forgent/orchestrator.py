@@ -26,6 +26,7 @@ from forgent.adapters import (
     PythonFrameworkAdapter,
 )
 from forgent.memory import MemoryStore, MemoryType
+from forgent.progress import NullProgress, Progress
 from forgent.registry.forge import AgentForge, ForgedAgent
 from forgent.registry.loader import Ecosystem, Registry
 from forgent.router.router import Router, RoutingDecision
@@ -80,11 +81,16 @@ class Orchestrator:
         task: str,
         metadata: dict[str, Any] | None = None,
         auto_forge: bool = False,
+        progress: Progress | None = None,
     ) -> RunResult:
+        prog: Progress = progress or NullProgress()
+        prog.start(task)
+
         sid = self.memory.start_session(task, metadata=metadata)
 
         # 1. Recall — assemble context from past sessions
         context = self.memory.context_for(task)
+        prog.recall(len(context))
         if context:
             self.memory.remember(
                 f"Recalled context for task: {len(context)} chars",
@@ -111,6 +117,8 @@ class Orchestrator:
             decision.reasoning += f" [auto-forged: {forged.spec.name}]"
             decision.confidence = max(decision.confidence, 0.6)
 
+        prog.route(decision.primary, decision.supporting, decision.mode, decision.confidence)
+
         self.memory.remember(
             f"Routed to '{decision.primary}' (mode={decision.mode}, "
             f"supporting={decision.supporting}). Reason: {decision.reasoning}",
@@ -127,20 +135,26 @@ class Orchestrator:
             )
         agents_to_run = [a for a in agents_to_run if a is not None]
 
+        async def _dispatch_with_progress(agent, ctx_str: str) -> AdapterResult:
+            prog.dispatch(agent.name, agent.ecosystem.value)
+            r = await self._dispatch(agent, task, ctx_str)
+            prog.dispatch_done(agent.name, r.success, len(r.output))
+            return r
+
         results: list[AdapterResult] = []
         if decision.mode == "parallel" and len(agents_to_run) > 1:
             results = await asyncio.gather(
-                *[self._dispatch(a, task, context) for a in agents_to_run]
+                *[_dispatch_with_progress(a, context) for a in agents_to_run]
             )
         elif decision.mode == "sequential":
             running_context = context
             for a in agents_to_run:
-                r = await self._dispatch(a, task, running_context)
+                r = await _dispatch_with_progress(a, running_context)
                 results.append(r)
                 running_context += f"\n\n[from {a.name}]\n{r.output[:2000]}"
         else:
             # single, evaluator-optimizer (delegated inside the python_framework adapter), or fallback
-            r = await self._dispatch(agents_to_run[0], task, context)
+            r = await _dispatch_with_progress(agents_to_run[0], context)
             results.append(r)
 
         # 4. Persist outputs
@@ -153,7 +167,11 @@ class Orchestrator:
                 tags=[r.agent, r.ecosystem.value, "success" if r.success else "error"],
             )
 
-        self.memory.close_session(sid, status="completed" if all(r.success for r in results) else "error")
+        prog.persist(sid, len(results))
+        success = bool(results) and all(r.success for r in results)
+        prog.done(success)
+
+        self.memory.close_session(sid, status="completed" if success else "error")
         return RunResult(task=task, session_id=sid, decision=decision, results=list(results))
 
     def run(
@@ -161,8 +179,9 @@ class Orchestrator:
         task: str,
         metadata: dict[str, Any] | None = None,
         auto_forge: bool = False,
+        progress: Progress | None = None,
     ) -> RunResult:
-        return asyncio.run(self.run_async(task, metadata, auto_forge=auto_forge))
+        return asyncio.run(self.run_async(task, metadata, auto_forge=auto_forge, progress=progress))
 
     async def forge_agent(
         self,

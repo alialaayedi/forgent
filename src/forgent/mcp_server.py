@@ -39,10 +39,11 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from forgent.memory import MemoryStore, MemoryType
 from forgent.orchestrator import Orchestrator
+from forgent.progress import MCPContextProgress
 from forgent.registry.loader import Ecosystem, Registry
 
 mcp = FastMCP("forgent")
@@ -76,39 +77,55 @@ def _get_orchestrator() -> Orchestrator:
 
 
 @mcp.tool()
-async def run_task(task: str, auto_forge: bool = False) -> str:
+async def run_task(task: str, auto_forge: bool = False, ctx: Context = None) -> str:
     """Run a task end-to-end through the orchestrator.
 
-    Routes the task to the best curated agent (or set of agents), executes
-    them via the matching ecosystem adapter, persists everything to the
-    project-local memory store, and returns the merged output along with the
-    routing decision.
+    Routes the task to the best curated agent, executes via the matching
+    ecosystem adapter, persists everything to the project-local memory
+    store, and returns the merged output along with the routing decision.
+
+    While running, this tool emits MCP `notifications/progress` and
+    `notifications/log` messages so MCP clients (Claude Code, Cursor, etc.)
+    can show a live trace of what forgent is doing — recall, route,
+    dispatch, persist — instead of just a generic spinner.
 
     Args:
         task: The task to perform, in plain English.
         auto_forge: If true, synthesizes a brand-new specialist subagent when
             the router's confidence in the existing catalog is low. The new
             agent is persisted and reused for future tasks of the same shape.
+        ctx: FastMCP-injected context (for progress notifications). Don't
+            pass this manually — FastMCP fills it in automatically.
 
     Returns:
-        A formatted string with the routing decision and the agent output(s).
+        A markdown string with a step-by-step trace, the routing decision,
+        and the agent output(s). The trace mirrors what was sent live so
+        clients that don't render progress notifications still see it inline.
     """
     orch = _get_orchestrator()
-    result = await orch.run_async(task, auto_forge=auto_forge)
+    progress = MCPContextProgress(ctx=ctx)
+    result = await orch.run_async(task, auto_forge=auto_forge, progress=progress)
     d = result.decision
+
+    trace = progress.to_markdown()
     header = (
-        f"## Routing decision\n"
-        f"- primary: {d.primary}\n"
+        f"## routing decision\n"
+        f"- primary: **{d.primary}**\n"
         f"- supporting: {', '.join(d.supporting) or '(none)'}\n"
         f"- mode: {d.mode}\n"
         f"- confidence: {d.confidence:.2f}\n"
         f"- reasoning: {d.reasoning}\n"
-        f"- session: {result.session_id}\n"
+        f"- session: `{result.session_id}`\n"
     )
+
     if not result.success:
         errors = "\n".join(f"- [{r.agent}] {r.error}" for r in result.results if r.error)
-        return f"{header}\n## Errors\n{errors}\n\n## Partial output\n{result.output}"
-    return f"{header}\n## Output\n{result.output}"
+        return (
+            f"{trace}\n\n{header}\n"
+            f"## errors\n{errors}\n\n"
+            f"## partial output\n{result.output}"
+        )
+    return f"{trace}\n\n{header}\n## output\n{result.output}"
 
 
 @mcp.tool()
