@@ -1,0 +1,33 @@
+// forgent brand palette — SCSS
+// Mirror of assets/brand/colors.css.
+
+// Core palette
+$forgent-ink-black:      #071013;
+$forgent-lobster-pink:   #eb5160;
+$forgent-rosy-taupe:     #b7999c;
+$forgent-silver:         #aaaaaa;
+$forgent-alabaster-grey: #dfe0e2;
+
+// HSL forms
+$forgent-ink-black-hsl:      hsla(195, 46%, 5%,  1);
+$forgent-lobster-pink-hsl:   hsla(354, 79%, 62%, 1);
+$forgent-rosy-taupe-hsl:     hsla(354, 17%, 66%, 1);
+$forgent-silver-hsl:         hsla(0,   0%,  67%, 1);
+$forgent-alabaster-grey-hsl: hsla(220, 5%,  88%, 1);
+
+// Semantic aliases — use these in components
+$forgent-bg:            $forgent-ink-black;
+$forgent-bg-elevated:   #0e1a1f;
+$forgent-fg:            $forgent-alabaster-grey;
+$forgent-fg-muted:      $forgent-silver;
+$forgent-fg-secondary:  $forgent-rosy-taupe;
+$forgent-accent:        $forgent-lobster-pink;
+$forgent-accent-quiet:  $forgent-rosy-taupe;
+$forgent-border:        $forgent-rosy-taupe;
+$forgent-border-strong: $forgent-lobster-pink;
+
+// Brand gradients
+$forgent-gradient-spark:   linear-gradient(90deg,  $forgent-lobster-pink 0%, $forgent-rosy-taupe 100%);
+$forgent-gradient-cooling: linear-gradient(180deg, $forgent-lobster-pink 0%, $forgent-ink-black 100%);
+$forgent-gradient-full:    linear-gradient(135deg, $forgent-ink-black 0%, $forgent-lobster-pink 35%, $forgent-rosy-taupe 70%, $forgent-alabaster-grey 100%);
+$forgent-gradient-radial:  radial-gradient(circle at 50% 50%, $forgent-lobster-pink 0%, $forgent-rosy-taupe 40%, $forgent-ink-black 100%);

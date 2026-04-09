@@ -1,8 +1,19 @@
+<p align="center">
+  <img src="assets/brand/banner.svg" alt="forgent — grow your own AI subagents on demand" width="100%"/>
+</p>
+
 # forgent
 
 > **Give Claude superpowers.** A meta-orchestrator that routes any task to the best curated agent across Claude Code subagents, Python multi-agent frameworks (LangGraph / CrewAI / OpenAI Agents SDK / mcp-agent), and MCP servers — and **forges brand-new specialist subagents on demand** when no curated agent fits.
 >
 > Ships as a single MCP server. Drop it into Claude Code, Claude Desktop, Cursor, Zed, or any MCP client and every Claude session gets the orchestrator's tools.
+
+<p align="center">
+  <a href="docs/brand.md"><img src="https://img.shields.io/badge/palette-ink_•_lobster_•_taupe_•_silver_•_alabaster-eb5160?style=flat-square&labelColor=071013" alt="brand palette"/></a>
+  <a href="docs/INTEGRATION.md"><img src="https://img.shields.io/badge/MCP-ready-eb5160?style=flat-square&labelColor=071013" alt="MCP ready"/></a>
+  <img src="https://img.shields.io/badge/python-3.10+-b7999c?style=flat-square&labelColor=071013" alt="Python 3.10+"/>
+  <img src="https://img.shields.io/badge/license-MIT-aaaaaa?style=flat-square&labelColor=071013" alt="MIT"/>
+</p>
 
 ## Why this exists
 

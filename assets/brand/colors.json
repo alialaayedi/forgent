@@ -1,0 +1,48 @@
+{
+  "name": "forgent",
+  "version": "1.0.0",
+  "description": "Brand palette for forgent. Programmatic source of truth — read this from CLI/web/docs to stay consistent.",
+  "palette": {
+    "ink_black": {
+      "hex": "#071013",
+      "rgb": [7, 16, 19],
+      "hsl": [195, 46, 5],
+      "role": "primary background, deep ground tone"
+    },
+    "lobster_pink": {
+      "hex": "#eb5160",
+      "rgb": [235, 81, 96],
+      "hsl": [354, 79, 62],
+      "role": "primary brand accent, the forge spark, primary CTA"
+    },
+    "rosy_taupe": {
+      "hex": "#b7999c",
+      "rgb": [183, 153, 156],
+      "hsl": [354, 17, 66],
+      "role": "secondary accent, warm muted neutral, default border"
+    },
+    "silver": {
+      "hex": "#aaaaaa",
+      "rgb": [170, 170, 170],
+      "hsl": [0, 0, 67],
+      "role": "metadata, dividers, dim text"
+    },
+    "alabaster_grey": {
+      "hex": "#dfe0e2",
+      "rgb": [223, 224, 226],
+      "hsl": [220, 5, 88],
+      "role": "primary foreground on dark, light surface"
+    }
+  },
+  "semantic": {
+    "bg":            "#071013",
+    "bg_elevated":   "#0e1a1f",
+    "fg":            "#dfe0e2",
+    "fg_muted":      "#aaaaaa",
+    "fg_secondary":  "#b7999c",
+    "accent":        "#eb5160",
+    "accent_quiet":  "#b7999c",
+    "border":        "#b7999c",
+    "border_strong": "#eb5160"
+  }
+}
