@@ -76,18 +76,162 @@ def _get_orchestrator() -> Orchestrator:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Response formatter
+# ---------------------------------------------------------------------------
+
+
+# Cap the inline full-output block so the response stays scannable.
+# Anything beyond this is reachable via recall_memory.
+_MAX_INLINE_OUTPUT = 12_000
+_PREVIEW_CHARS = 240
+
+
+def _format_run_response(task: str, result: Any, progress: "MCPContextProgress") -> str:
+    """Render a `run_task` result as a tight, scannable markdown response.
+
+    Layout:
+        forgent · <agent> · <duration>
+        <one-line context: success or failure summary>
+
+        **trace**
+        - recall: ...
+        - route: ...
+        - dispatch: ...
+        - persist: ...
+        - done: ...
+
+        **routing**
+        - primary, mode, confidence, reasoning
+
+        **preview**
+        > first ~240 chars of the output, blockquoted
+
+        <details>
+        <summary>full output · N chars</summary>
+        ...full agent output...
+        </details>
+
+        **next**
+        - suggested follow-up tool calls
+    """
+    d = result.decision
+    elapsed = progress.elapsed()
+    short_session = result.session_id[:8]
+
+    # ----- hero line ----------------------------------------------------
+    if result.success:
+        hero = f"**forgent** · **`{d.primary}`** · {elapsed:.1f}s · session `{short_session}`"
+    else:
+        hero = f"**forgent** · failed · session `{short_session}`"
+
+    # ----- compact trace -----------------------------------------------
+    trace_items = progress.trace_items()
+    if trace_items:
+        trace_block = "**trace**\n" + "\n".join(
+            f"- `{label}` — {body}" for label, body in trace_items
+        )
+    else:
+        trace_block = ""
+
+    # ----- routing block ------------------------------------------------
+    sup = f" + {', '.join(d.supporting)}" if d.supporting else ""
+    routing_block = (
+        "**routing**\n"
+        f"- primary: `{d.primary}`{sup}\n"
+        f"- mode: `{d.mode}` · confidence: `{d.confidence:.2f}`\n"
+        f"- reasoning: {d.reasoning}"
+    )
+
+    # ----- failure path -------------------------------------------------
+    if not result.success:
+        errors = "\n".join(
+            f"- `{r.agent}` ({r.ecosystem.value}) — {r.error}"
+            for r in result.results
+            if r.error
+        ) or "- (no specific errors reported)"
+
+        return "\n\n".join([
+            hero,
+            trace_block,
+            routing_block,
+            "**errors**\n" + errors,
+            (
+                "**how to fix the most common one**\n"
+                "If you see `ANTHROPIC_API_KEY not set`, the forgent MCP server "
+                "subprocess doesn't have your key. Either:\n"
+                "1. Add the key to your shell rc and re-register forgent: "
+                "`claude mcp remove forgent && claude mcp add --scope user forgent "
+                "--env ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY\" -- /path/to/forgent-mcp`\n"
+                "2. Restart the Claude Code window so the subprocess respawns "
+                "with the current registration env."
+            ),
+        ])
+
+    # ----- success path -------------------------------------------------
+    raw_output = result.output or ""
+    total_chars = len(raw_output)
+
+    # Single-line preview (collapse newlines so it stays one paragraph)
+    preview = raw_output[:_PREVIEW_CHARS].replace("\n", " ").strip()
+    if total_chars > _PREVIEW_CHARS:
+        preview += "…"
+    preview_block = f"**preview**\n\n> {preview}" if preview else ""
+
+    # Full output, capped, in a collapsed details block so the response
+    # doesn't dominate the conversation
+    if total_chars > _MAX_INLINE_OUTPUT:
+        body = (
+            raw_output[:_MAX_INLINE_OUTPUT]
+            + f"\n\n*[truncated · {total_chars - _MAX_INLINE_OUTPUT:,} more chars · "
+            f"use `recall_memory query=\"{short_session}\"` to retrieve the full output]*"
+        )
+    else:
+        body = raw_output
+
+    # NOTE: <details> renders as a click-to-expand block in Claude Code,
+    # Cursor, GitHub markdown, and most other modern markdown renderers.
+    full_output_block = (
+        f"<details>\n"
+        f"<summary><b>full output</b> · {total_chars:,} chars</summary>\n\n"
+        f"{body}\n\n"
+        f"</details>"
+    )
+
+    # Suggested follow-ups make the response feel actionable
+    next_block = (
+        "**next**\n"
+        f"- `recall_memory query=\"{short_session}\"` — retrieve this session's outputs later\n"
+        "- `route_only task=\"…\"` — try a different routing decision without executing\n"
+        "- `forge_agent task=\"…\"` — synthesize a permanent specialist for this task class\n"
+        "- `search_agents query=\"…\"` — find related curated agents in the registry"
+    )
+
+    return "\n\n".join(
+        block for block in [
+            hero,
+            trace_block,
+            routing_block,
+            preview_block,
+            full_output_block,
+            next_block,
+        ] if block
+    )
+
+
 @mcp.tool()
 async def run_task(task: str, auto_forge: bool = False, ctx: Context = None) -> str:
     """Run a task end-to-end through the orchestrator.
 
     Routes the task to the best curated agent, executes via the matching
     ecosystem adapter, persists everything to the project-local memory
-    store, and returns the merged output along with the routing decision.
+    store, and returns a *scannable* markdown response — hero summary,
+    compact trace, routing details, output preview, and a collapsible
+    full-output block (so the response never floods the conversation).
 
-    While running, this tool emits MCP `notifications/progress` and
-    `notifications/log` messages so MCP clients (Claude Code, Cursor, etc.)
-    can show a live trace of what forgent is doing — recall, route,
-    dispatch, persist — instead of just a generic spinner.
+    While running, this tool also emits MCP `notifications/progress` and
+    `notifications/log` so clients that render them show a live trace
+    instead of a generic spinner.
 
     Args:
         task: The task to perform, in plain English.
@@ -98,34 +242,13 @@ async def run_task(task: str, auto_forge: bool = False, ctx: Context = None) -> 
             pass this manually — FastMCP fills it in automatically.
 
     Returns:
-        A markdown string with a step-by-step trace, the routing decision,
-        and the agent output(s). The trace mirrors what was sent live so
-        clients that don't render progress notifications still see it inline.
+        A scannable markdown response with hero, trace, routing, preview,
+        collapsed full output, and suggested follow-up tool calls.
     """
     orch = _get_orchestrator()
     progress = MCPContextProgress(ctx=ctx)
     result = await orch.run_async(task, auto_forge=auto_forge, progress=progress)
-    d = result.decision
-
-    trace = progress.to_markdown()
-    header = (
-        f"## routing decision\n"
-        f"- primary: **{d.primary}**\n"
-        f"- supporting: {', '.join(d.supporting) or '(none)'}\n"
-        f"- mode: {d.mode}\n"
-        f"- confidence: {d.confidence:.2f}\n"
-        f"- reasoning: {d.reasoning}\n"
-        f"- session: `{result.session_id}`\n"
-    )
-
-    if not result.success:
-        errors = "\n".join(f"- [{r.agent}] {r.error}" for r in result.results if r.error)
-        return (
-            f"{trace}\n\n{header}\n"
-            f"## errors\n{errors}\n\n"
-            f"## partial output\n{result.output}"
-        )
-    return f"{trace}\n\n{header}\n## output\n{result.output}"
+    return _format_run_response(task, result, progress)
 
 
 @mcp.tool()

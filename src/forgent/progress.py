@@ -226,19 +226,34 @@ class MCPContextProgress:
       2. `ctx.info(message)` — log notifications. Clients that don't render
          progress bars usually still surface log messages inline.
 
-    AND it accumulates a structured markdown trace via `to_markdown()` so
-    the final response text shows the same step-by-step view even when the
-    client renders nothing live.
+    AND it accumulates a structured trace via `trace_items()` so the final
+    response text shows the same step-by-step view even when the client
+    renders nothing live.
     """
 
     # 7 fixed checkpoints — used as the denominator for the progress bar
     _TOTAL_STEPS = 7
 
     def __init__(self, ctx: Any | None = None):
+        import time
         self._ctx = ctx
         self._step = 0
         self._lines: list[str] = []
+        self._items: list[tuple[str, str]] = []  # (label, body) for trace_items()
         self._task = ""
+        self._started_at = time.time()
+
+    def elapsed(self) -> float:
+        import time
+        return time.time() - self._started_at
+
+    def trace_items(self) -> list[tuple[str, str]]:
+        """Return [(label, body), ...] for the structured trace.
+
+        Used by callers that want a tight bullet list rather than the more
+        verbose markdown emitted by `to_markdown()`.
+        """
+        return list(self._items)
 
     def _bump(self, label: str) -> None:
         """Advance the progress counter and send a notification."""
@@ -260,45 +275,50 @@ class MCPContextProgress:
 
     # ----- callbacks --------------------------------------------------
 
+    def _record(self, label: str, body: str) -> None:
+        self._items.append((label, body))
+        self._lines.append(f"**{label}** — {body}")
+
     def start(self, task: str) -> None:
         self._task = task
-        self._lines.append(f"**task** — {task}")
-        self._bump(f"forgent: starting task")
+        self._record("task", task)
+        self._bump("forgent: starting task")
 
     def recall(self, n_chars: int) -> None:
         if n_chars > 0:
-            self._lines.append(f"**recall** — {n_chars} chars of relevant context from memory")
+            self._record("recall", f"{n_chars} chars of relevant context from memory")
             self._bump(f"forgent: recalled {n_chars} chars from memory")
         else:
-            self._lines.append("**recall** — no prior context")
+            self._record("recall", "no prior context")
             self._bump("forgent: no prior context to recall")
 
     def route(self, primary: str, supporting: list[str], mode: str, confidence: float) -> None:
-        sup = f" + supporting={', '.join(supporting)}" if supporting else ""
-        self._lines.append(
-            f"**route** — `{primary}`{sup} (mode={mode}, confidence={confidence:.2f})"
+        sup = f" + {', '.join(supporting)}" if supporting else ""
+        self._record(
+            "route",
+            f"`{primary}`{sup} (mode={mode}, confidence={confidence:.2f})",
         )
         self._bump(f"forgent: routed to {primary}")
 
     def dispatch(self, agent: str, ecosystem: str) -> None:
-        self._lines.append(f"**dispatch** — running `{agent}` via {ecosystem} adapter…")
+        self._record("dispatch", f"running `{agent}` via {ecosystem} adapter")
         self._bump(f"forgent: dispatching to {agent}")
 
     def dispatch_done(self, agent: str, success: bool, output_chars: int) -> None:
-        icon = "✓" if success else "✗"
-        self._lines.append(
-            f"**{icon} {agent}** — {'returned ' + str(output_chars) + ' chars' if success else 'failed'}"
-        )
+        if success:
+            self._record(f"done {agent}", f"{output_chars:,} chars")
+        else:
+            self._record(f"failed {agent}", "no output")
         self._bump(f"forgent: {agent} {'done' if success else 'failed'}")
 
     def persist(self, session_id: str, n_outputs: int) -> None:
-        self._lines.append(f"**persist** — {n_outputs} outputs → session `{session_id[:8]}`")
+        self._record("persist", f"{n_outputs} outputs → session `{session_id[:8]}`")
         self._bump(f"forgent: persisted {n_outputs} outputs")
 
     def done(self, success: bool) -> None:
-        icon = "✓ done" if success else "✗ failed"
-        self._lines.append(f"**{icon}**")
-        self._bump(f"forgent: {'done' if success else 'failed'}")
+        verb = "done" if success else "failed"
+        self._record(verb, f"{self.elapsed():.1f}s")
+        self._bump(f"forgent: {verb}")
 
     def error(self, message: str) -> None:
         self._lines.append(f"**✗ error** — {message}")

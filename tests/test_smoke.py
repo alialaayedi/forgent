@@ -177,3 +177,90 @@ def test_mcp_context_progress_builds_markdown_trace(tmp_path):
     assert "route" in trace
     assert "dispatch" in trace
     assert "persist" in trace
+
+    # Structured items should also be available for compact rendering
+    items = progress.trace_items()
+    assert len(items) >= 5  # task + recall + route + dispatch + persist + done
+    labels = [label for label, _body in items]
+    assert "task" in labels
+    assert "route" in labels
+    assert "persist" in labels
+
+
+def test_mcp_run_task_formatter_success(tmp_path):
+    """The new run_task formatter renders a success run as scannable markdown."""
+    from forgent.mcp_server import _format_run_response
+    from forgent.progress import MCPContextProgress
+
+    progress = MCPContextProgress(ctx=None)
+    orch, fake = _fresh_orchestrator(tmp_path)
+    # Task is chosen so the heuristic router lands on a claude_code agent
+    # (python-pro / security-auditor / backend-developer) — all routed
+    # through the fake adapter installed by _fresh_orchestrator. Avoids
+    # words like "write" / "fetch" / "files" that would match MCP agents.
+    result = asyncio.run(
+        orch.run_async("review this Python class for security bugs", progress=progress)
+    )
+
+    formatted = _format_run_response("review this Python class for security bugs", result, progress)
+
+    # Hero line
+    assert "**forgent**" in formatted
+    assert "session" in formatted
+    # Compact trace
+    assert "**trace**" in formatted
+    assert "`route`" in formatted
+    # Routing block
+    assert "**routing**" in formatted
+    assert "primary:" in formatted
+    # Preview blockquote
+    assert "**preview**" in formatted
+    assert formatted.count("> ") >= 1
+    # Collapsed full output
+    assert "<details>" in formatted
+    assert "<summary>" in formatted
+    assert "full output" in formatted
+    # Next-steps menu
+    assert "**next**" in formatted
+    assert "recall_memory" in formatted
+    assert "route_only" in formatted
+    assert "forge_agent" in formatted
+
+
+def test_mcp_run_task_formatter_failure_includes_remediation(tmp_path):
+    """When run_task fails, the formatter includes how-to-fix guidance."""
+    import os
+    from forgent.adapters.base import Adapter, AdapterResult
+    from forgent.mcp_server import _format_run_response
+    from forgent.orchestrator import Orchestrator
+    from forgent.progress import MCPContextProgress
+    from forgent.registry.loader import AgentSpec, Ecosystem, Registry
+
+    class FailingAdapter(Adapter):
+        ecosystem = Ecosystem.CLAUDE_CODE
+
+        async def run(self, agent: AgentSpec, task: str, context: str = "") -> AdapterResult:
+            return AdapterResult(
+                agent=agent.name,
+                ecosystem=self.ecosystem,
+                output="",
+                success=False,
+                error="ANTHROPIC_API_KEY not set or anthropic SDK not installed",
+            )
+
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    orch = Orchestrator(registry=Registry.load(), db_path=str(tmp_path / "fail.db"))
+    orch.adapters[Ecosystem.CLAUDE_CODE] = FailingAdapter()
+    orch.claude_adapter = FailingAdapter()
+    orch.adapters[Ecosystem.PYTHON_FRAMEWORK].claude_adapter = FailingAdapter()  # type: ignore
+
+    progress = MCPContextProgress(ctx=None)
+    result = asyncio.run(orch.run_async("any failing task", progress=progress))
+
+    formatted = _format_run_response("any failing task", result, progress)
+
+    assert "failed" in formatted
+    assert "**errors**" in formatted
+    assert "ANTHROPIC_API_KEY" in formatted
+    assert "**how to fix" in formatted
+    assert "claude mcp add" in formatted
