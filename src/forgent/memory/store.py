@@ -120,7 +120,7 @@ class MemoryStore:
         3. remember(...) after each agent run — append outputs and decisions
     """
 
-    def __init__(self, db_path: str | Path = "./orchestrator.db"):
+    def __init__(self, db_path: str | Path = "./forgent.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)

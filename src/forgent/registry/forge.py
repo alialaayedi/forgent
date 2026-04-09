@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from orchestrator.registry.loader import (
+from forgent.registry.loader import (
     PKG_DIR,
     AgentSpec,
     Ecosystem,
@@ -68,7 +68,7 @@ class AgentForge:
         api_key: str | None = None,
     ):
         self.registry = registry
-        self.model = model or os.environ.get("ORCHESTRATOR_FORGE_MODEL", FORGE_MODEL_DEFAULT)
+        self.model = model or os.environ.get("FORGENT_FORGE_MODEL", FORGE_MODEL_DEFAULT)
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self._client = None
         if self.api_key:

@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from orchestrator.memory.store import MemoryStore
-    from orchestrator.registry.loader import Registry, AgentSpec
+    from forgent.memory.store import MemoryStore
+    from forgent.registry.loader import Registry, AgentSpec
 
 ROUTER_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
 
@@ -56,7 +56,7 @@ class Router:
     ):
         self.registry = registry
         self.memory = memory
-        self.model = model or os.environ.get("ORCHESTRATOR_ROUTER_MODEL", ROUTER_MODEL_DEFAULT)
+        self.model = model or os.environ.get("FORGENT_ROUTER_MODEL", ROUTER_MODEL_DEFAULT)
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self._client = None
         if self.api_key:
@@ -81,7 +81,7 @@ class Router:
             except Exception as exc:
                 # Fall through to heuristic — but record why
                 if self.memory is not None:
-                    from orchestrator.memory.store import MemoryType
+                    from forgent.memory.store import MemoryType
                     self.memory.remember(
                         f"Router LLM failed, falling back to heuristic: {exc}",
                         MemoryType.NOTE,
@@ -209,7 +209,7 @@ class Router:
     def _past_decisions(self, task: str, k: int = 3) -> str:
         if self.memory is None:
             return ""
-        from orchestrator.memory.store import MemoryType
+        from forgent.memory.store import MemoryType
         entries = self.memory.recall(task, limit=k, type=MemoryType.ROUTING)
         if not entries:
             return ""

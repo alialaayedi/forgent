@@ -21,9 +21,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from orchestrator.memory import MemoryStore, MemoryType
-from orchestrator.orchestrator import Orchestrator
-from orchestrator.registry.loader import Registry, Ecosystem
+from forgent.memory import MemoryStore, MemoryType
+from forgent.orchestrator import Orchestrator
+from forgent.registry.loader import Registry, Ecosystem
 
 load_dotenv()
 
@@ -37,7 +37,7 @@ console = Console()
 
 
 def _db_path() -> str:
-    return os.environ.get("ORCHESTRATOR_DB", "./orchestrator.db")
+    return os.environ.get("FORGENT_DB", "./forgent.db")
 
 
 @app.command()
@@ -233,7 +233,7 @@ def stats():
     eco_counts: dict[str, int] = {}
     for a in reg:
         eco_counts[a.ecosystem.value] = eco_counts.get(a.ecosystem.value, 0) + 1
-    table = Table(title="Orchestrator overview")
+    table = Table(title="Forgent overview")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", justify="right")
     table.add_row("total curated agents", str(len(reg)))
