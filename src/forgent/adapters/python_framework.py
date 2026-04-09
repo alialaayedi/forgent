@@ -17,7 +17,7 @@ For the v1 build we ship a *functional Python implementation* of each pattern
 that uses the Anthropic API directly. That keeps install lightweight (no
 LangGraph / CrewAI / mcp-agent dependency) while preserving the patterns'
 shapes. Users who want the real frameworks can swap in via the optional
-extras (`pip install agent-orchestrator[langgraph,crewai,mcp]`).
+extras (`pip install forgent[langgraph,crewai,mcp]`).
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ from __future__ import annotations
 import asyncio
 import os
 
-from orchestrator.adapters.base import Adapter, AdapterResult
-from orchestrator.adapters.claude_code import ClaudeCodeAdapter, _resolve_model
-from orchestrator.registry.loader import AgentSpec, Ecosystem, Registry
+from forgent.adapters.base import Adapter, AdapterResult
+from forgent.adapters.claude_code import ClaudeCodeAdapter, _resolve_model
+from forgent.registry.loader import AgentSpec, Ecosystem, Registry
 
 
 class PythonFrameworkAdapter(Adapter):
@@ -71,7 +71,7 @@ class PythonFrameworkAdapter(Adapter):
     # ----- patterns ---------------------------------------------------
 
     async def _router(self, task: str, context: str) -> AdapterResult:
-        from orchestrator.router.router import Router
+        from forgent.router.router import Router
 
         router = Router(self.registry)
         decision = router.route(task)

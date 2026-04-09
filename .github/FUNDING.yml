@@ -1,0 +1,11 @@
+# Funding sources for this project. GitHub renders this as a "Sponsor" button
+# on the repo page. Contributors who land merged PRs are eligible for a share
+# of the donation pool — see README.md "Support & contributor rewards".
+#
+# Replace the placeholders with your real handles before pushing.
+
+github: [alialaayedi]               # GitHub Sponsors handle
+open_collective: subagent-forge     # Open Collective slug (transparent contributor fund)
+ko_fi:                              # ko-fi.com/<handle>
+buy_me_a_coffee:                    # buymeacoffee.com/<handle>
+custom: ["https://polar.sh/alialaayedi"]   # Polar.sh, Stripe link, or any other donation URL

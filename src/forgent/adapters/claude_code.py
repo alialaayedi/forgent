@@ -15,15 +15,15 @@ from __future__ import annotations
 
 import os
 
-from orchestrator.adapters.base import Adapter, AdapterResult
-from orchestrator.registry.loader import AgentSpec, Ecosystem
+from forgent.adapters.base import Adapter, AdapterResult
+from forgent.registry.loader import AgentSpec, Ecosystem
 
 
 class ClaudeCodeAdapter(Adapter):
     ecosystem = Ecosystem.CLAUDE_CODE
 
     def __init__(self, model: str | None = None, api_key: str | None = None, max_tokens: int = 4096):
-        self.model = model or os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-4-6")
+        self.model = model or os.environ.get("FORGENT_MODEL", "claude-opus-4-6")
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.max_tokens = max_tokens
         self._client = None

@@ -18,17 +18,17 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from orchestrator.adapters import (
+from forgent.adapters import (
     Adapter,
     AdapterResult,
     ClaudeCodeAdapter,
     MCPAdapter,
     PythonFrameworkAdapter,
 )
-from orchestrator.memory import MemoryStore, MemoryType
-from orchestrator.registry.forge import AgentForge, ForgedAgent
-from orchestrator.registry.loader import Ecosystem, Registry
-from orchestrator.router.router import Router, RoutingDecision
+from forgent.memory import MemoryStore, MemoryType
+from forgent.registry.forge import AgentForge, ForgedAgent
+from forgent.registry.loader import Ecosystem, Registry
+from forgent.router.router import Router, RoutingDecision
 
 # When the router's confidence is below this threshold and auto_forge is on,
 # the orchestrator synthesizes a fresh specialist for the task.
@@ -60,7 +60,7 @@ class Orchestrator:
         self,
         registry: Registry | None = None,
         memory: MemoryStore | None = None,
-        db_path: str = "./orchestrator.db",
+        db_path: str = "./forgent.db",
     ):
         self.registry = registry or Registry.load()
         self.memory = memory or MemoryStore(db_path)

@@ -15,10 +15,10 @@ install:
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		find $(VENV)/lib -name '__editable__.*.pth' -exec chflags nohidden {} \; 2>/dev/null || true; \
 	fi
-	@$(PYTHON) -c "import orchestrator; print('orchestrator package importable')"
+	@$(PYTHON) -c "import forgent; print('forgent package importable')"
 
 vendor: install
-	$(VENV)/bin/orchestrator vendor
+	$(VENV)/bin/forgent vendor
 
 test: install
 	$(PYTHON) -m pytest tests/ -v
@@ -32,4 +32,4 @@ refresh-sources:
 	cd sources && git clone --depth 1 https://github.com/lastmile-ai/mcp-agent.git lastmile-mcp-agent
 
 clean:
-	rm -rf $(VENV) build dist *.egg-info src/*.egg-info orchestrator.db
+	rm -rf $(VENV) build dist *.egg-info src/*.egg-info forgent.db

@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from orchestrator.registry.loader import AgentSpec, Ecosystem
+from forgent.registry.loader import AgentSpec, Ecosystem
 
 
 @dataclass

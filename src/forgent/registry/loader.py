@@ -224,7 +224,7 @@ def _split_frontmatter(text: str) -> tuple[str, dict[str, Any]]:
 
 
 def _cli() -> None:
-    """`python -m orchestrator.registry.loader --vendor` to copy source files in."""
+    """`python -m forgent.registry.loader --vendor` to copy source files in."""
     import argparse
 
     parser = argparse.ArgumentParser()

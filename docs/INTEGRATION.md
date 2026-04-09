@@ -12,16 +12,16 @@ binary works across:
 
 ```bash
 cd /Users/alikareem/Documents/agent-orchestration
-python3 -m build --wheel              # produces dist/agent_orchestrator-0.1.0-py3-none-any.whl
+python3 -m build --wheel              # produces dist/forgent-0.1.0-py3-none-any.whl
 ./scripts/install.sh                  # pipx-install + print registration commands
 ```
 
 After this:
 - `orchestrator` is on your `$PATH` (any directory)
-- `orchestrator-mcp` is the MCP server entry point (any MCP client can spawn it)
+- `forgent-mcp` is the MCP server entry point (any MCP client can spawn it)
 
 You can also distribute the `.whl` file to any other machine and just run
-`pipx install agent_orchestrator-0.1.0-py3-none-any.whl`.
+`pipx install forgent-0.1.0-py3-none-any.whl`.
 
 ## 2. Register with Claude Code
 
@@ -30,17 +30,17 @@ Claude Code reads MCP servers from `~/.claude/mcp_settings.json` (or per-project
 
 ```bash
 # Pick up ANTHROPIC_API_KEY from your shell. Per-project memory means each
-# directory you cd into has its own DB at ./orchestrator.db.
-claude mcp add agent-orchestrator \
+# directory you cd into has its own DB at ./forgent.db.
+claude mcp add forgent \
   --env ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  --env ORCHESTRATOR_DB=./orchestrator.db \
-  -- $(which orchestrator-mcp)
+  --env FORGENT_DB=./forgent.db \
+  -- $(which forgent-mcp)
 ```
 
 Verify:
 
 ```bash
-claude mcp list                       # should show agent-orchestrator
+claude mcp list                       # should show forgent
 ```
 
 In any Claude Code session you can now ask:
@@ -63,11 +63,11 @@ Add (or merge into) the `mcpServers` block:
 ```json
 {
   "mcpServers": {
-    "agent-orchestrator": {
-      "command": "/Users/YOU/.local/bin/orchestrator-mcp",
+    "forgent": {
+      "command": "/Users/YOU/.local/bin/forgent-mcp",
       "env": {
         "ANTHROPIC_API_KEY": "sk-ant-...",
-        "ORCHESTRATOR_DB": "/Users/YOU/.orchestrator.db"
+        "FORGENT_DB": "/Users/YOU/.forgent.db"
       }
     }
   }
@@ -92,12 +92,12 @@ menu and Claude can call them in any conversation.
 
 ## 5. Per-project memory
 
-The MCP server writes its memory DB to whatever path `ORCHESTRATOR_DB`
-points at. The default is `./orchestrator.db` (relative to wherever the
+The MCP server writes its memory DB to whatever path `FORGENT_DB`
+points at. The default is `./forgent.db` (relative to wherever the
 client launched the server), so each project gets its own knowledge base.
 
 To share memory across all projects on a machine, set
-`ORCHESTRATOR_DB=$HOME/.orchestrator.db` in the Claude Code/Desktop env.
+`FORGENT_DB=$HOME/.forgent.db` in the Claude Code/Desktop env.
 
 ## 6. Forging new subagents — the killer feature
 
@@ -105,20 +105,20 @@ The orchestrator can grow new specialists on demand. Two paths:
 
 **Explicit (recommended for stable results):**
 ```bash
-orchestrator forge "design SAML 2.0 SSO integrations with Okta and Azure AD"
+forgent forge "design SAML 2.0 SSO integrations with Okta and Azure AD"
 ```
 or in Claude:
 > "Use forge_agent to create a specialist for SAML 2.0 SSO integrations."
 
 The new agent is written to:
-- `src/orchestrator/registry/dynamic.yaml` (metadata)
-- `src/orchestrator/registry/agents/claude_code/<name>.md` (system prompt)
+- `src/forgent/registry/dynamic.yaml` (metadata)
+- `src/forgent/registry/agents/claude_code/<name>.md` (system prompt)
 
 It's available immediately to every future call, and it survives restarts.
 
 **Automatic (lower confidence triggers a forge):**
 ```bash
-orchestrator run --auto-forge "design SAML 2.0 SSO integrations with Okta"
+forgent run --auto-forge "design SAML 2.0 SSO integrations with Okta"
 ```
 or in Claude:
 > "Run this task with auto_forge enabled."
@@ -135,11 +135,11 @@ hand-editing `catalog.yaml`.
 cd /Users/alikareem/Documents/agent-orchestration
 git pull             # if you've moved this to a git repo
 python3 -m build --wheel
-pipx install --force dist/agent_orchestrator-*.whl
+pipx install --force dist/forgent-*.whl
 ```
 
 Forged agents in `dynamic.yaml` and `agents/claude_code/` survive upgrades
 because they're inside the package directory — but if you reinstall from
 the wheel they'll be replaced. To keep them safe across reinstalls, copy
 `dynamic.yaml` to a backup before upgrading, or set
-`ORCHESTRATOR_DYNAMIC_DIR` to an external path (planned for v0.2).
+`FORGENT_DYNAMIC_DIR` to an external path (planned for v0.2).

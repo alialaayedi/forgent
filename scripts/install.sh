@@ -4,14 +4,14 @@
 # What it does:
 #   1. Installs `pipx` if missing (macOS via brew, Linux via apt/dnf if available)
 #   2. Installs the orchestrator from the local wheel via pipx (isolated venv,
-#      globally-callable `orchestrator` and `orchestrator-mcp` binaries)
+#      globally-callable `orchestrator` and `forgent-mcp` binaries)
 #   3. Clears the macOS UF_HIDDEN flag on any pipx-managed .pth files
 #   4. Prints the exact commands to register the MCP server with Claude Code
 #      and Claude Desktop
 #
 # Usage:
 #   ./scripts/install.sh                        # install from dist/*.whl in this repo
-#   ./scripts/install.sh path/to/agent_orchestrator.whl
+#   ./scripts/install.sh path/to/forgent.whl
 #
 # Re-running is safe — pipx handles upgrades.
 
@@ -21,7 +21,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WHEEL="${1:-}"
 
 if [[ -z "$WHEEL" ]]; then
-    WHEEL="$(ls -t "$REPO_ROOT"/dist/agent_orchestrator-*.whl 2>/dev/null | head -1 || true)"
+    WHEEL="$(ls -t "$REPO_ROOT"/dist/forgent-*.whl 2>/dev/null | head -1 || true)"
 fi
 
 if [[ -z "$WHEEL" || ! -f "$WHEEL" ]]; then
@@ -53,39 +53,39 @@ pipx install --force "$WHEEL"
 
 # 3. Clear UF_HIDDEN on any .pth files (macOS sandbox quirk)
 if [[ "$(uname)" == "Darwin" ]]; then
-    PIPX_VENV="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null || echo "$HOME/.local/pipx/venvs")/agent-orchestrator"
+    PIPX_VENV="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null || echo "$HOME/.local/pipx/venvs")/forgent"
     if [[ -d "$PIPX_VENV" ]]; then
         find "$PIPX_VENV" -name '*.pth' -exec chflags nohidden {} \; 2>/dev/null || true
     fi
 fi
 
-# 4. Locate the orchestrator-mcp binary and print registration commands
-ORCH_BIN="$(command -v orchestrator || echo "$HOME/.local/bin/orchestrator")"
-MCP_BIN="$(command -v orchestrator-mcp || echo "$HOME/.local/bin/orchestrator-mcp")"
+# 4. Locate the forgent-mcp binary and print registration commands
+ORCH_BIN="$(command -v orchestrator || echo "$HOME/.local/bin/forgent")"
+MCP_BIN="$(command -v forgent-mcp || echo "$HOME/.local/bin/forgent-mcp")"
 
 cat <<EOF
 
 ==> Installed.
 
-  orchestrator       -> $ORCH_BIN
-  orchestrator-mcp   -> $MCP_BIN
+  forgent             -> $ORCH_BIN
+  forgent-mcp   -> $MCP_BIN
 
 Try it:
 
-  orchestrator stats
-  orchestrator agents search "kubernetes"
-  orchestrator run "your task here"
-  orchestrator forge "design RFC-compliant SAML 2.0 SSO integrations"
+  forgent stats
+  forgent agents search "kubernetes"
+  forgent run "your task here"
+  forgent forge "design RFC-compliant SAML 2.0 SSO integrations"
 
 ----------------------------------------------------------------------
 Register the MCP server with Claude Code (any project, any directory):
 
-  claude mcp add agent-orchestrator -- $MCP_BIN
+  claude mcp add forgent -- $MCP_BIN
 
   # With per-project memory (run this from the project dir you want to use):
-  claude mcp add agent-orchestrator \\
+  claude mcp add forgent \\
     --env ANTHROPIC_API_KEY=\$ANTHROPIC_API_KEY \\
-    --env ORCHESTRATOR_DB=./orchestrator.db \\
+    --env FORGENT_DB=./forgent.db \\
     -- $MCP_BIN
 
 ----------------------------------------------------------------------
@@ -96,11 +96,11 @@ Register the MCP server with Claude Desktop:
 
   {
     "mcpServers": {
-      "agent-orchestrator": {
+      "forgent": {
         "command": "$MCP_BIN",
         "env": {
           "ANTHROPIC_API_KEY": "sk-ant-...",
-          "ORCHESTRATOR_DB": "/Users/$(whoami)/.orchestrator.db"
+          "FORGENT_DB": "/Users/$(whoami)/.forgent.db"
         }
       }
     }

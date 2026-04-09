@@ -21,8 +21,8 @@ import json
 import os
 import shlex
 
-from orchestrator.adapters.base import Adapter, AdapterResult
-from orchestrator.registry.loader import AgentSpec, Ecosystem
+from forgent.adapters.base import Adapter, AdapterResult
+from forgent.registry.loader import AgentSpec, Ecosystem
 
 
 class MCPAdapter(Adapter):
@@ -125,7 +125,7 @@ class MCPAdapter(Adapter):
                 "params": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "agent-orchestrator", "version": "0.1.0"},
+                    "clientInfo": {"name": "forgent", "version": "0.1.0"},
                 },
             }
             list_msg = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}

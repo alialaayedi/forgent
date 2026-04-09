@@ -1,5 +1,5 @@
 [project]
-name = "agent-orchestrator"
+name = "forgent"
 version = "0.1.0"
 description = "Meta-orchestrator routing tasks across the best agents from Claude Code subagents, Python frameworks (LangGraph/CrewAI), and MCP servers"
 readme = "README.md"
@@ -29,8 +29,8 @@ all = [
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [project.scripts]
-orchestrator = "orchestrator.cli:app"
-orchestrator-mcp = "orchestrator.mcp_server:main"
+forgent = "forgent.cli:app"
+forgent-mcp = "forgent.mcp_server:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -43,5 +43,5 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"orchestrator.registry" = ["*.yaml"]
-"orchestrator.registry.agents.claude_code" = ["*.md"]
+"forgent.registry" = ["*.yaml"]
+"forgent.registry.agents.claude_code" = ["*.md"]

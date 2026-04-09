@@ -3,17 +3,17 @@
 Run as a stdio MCP server (the only transport Claude Desktop and Claude Code
 support today). Register it with:
 
-    claude mcp add agent-orchestrator -- /abs/path/to/.venv/bin/orchestrator-mcp
+    claude mcp add forgent -- /abs/path/to/.venv/bin/forgent-mcp
 
 Or in Claude Desktop's claude_desktop_config.json:
 
     {
       "mcpServers": {
-        "agent-orchestrator": {
-          "command": "/abs/path/to/.venv/bin/orchestrator-mcp",
+        "forgent": {
+          "command": "/abs/path/to/.venv/bin/forgent-mcp",
           "env": {
             "ANTHROPIC_API_KEY": "sk-ant-...",
-            "ORCHESTRATOR_DB": "./orchestrator.db"
+            "FORGENT_DB": "./forgent.db"
           }
         }
       }
@@ -29,8 +29,8 @@ Tools exposed (any MCP client can call these):
     memory_stats     — counts by type
     route_only       — return the routing decision without executing (cheap)
 
-Per-project memory: the server reads ORCHESTRATOR_DB from the env, falling
-back to ./orchestrator.db relative to wherever the MCP client launched the
+Per-project memory: the server reads FORGENT_DB from the env, falling
+back to ./forgent.db relative to wherever the MCP client launched the
 server. Different working directories get different memory stores.
 """
 
@@ -41,11 +41,11 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from orchestrator.memory import MemoryStore, MemoryType
-from orchestrator.orchestrator import Orchestrator
-from orchestrator.registry.loader import Ecosystem, Registry
+from forgent.memory import MemoryStore, MemoryType
+from forgent.orchestrator import Orchestrator
+from forgent.registry.loader import Ecosystem, Registry
 
-mcp = FastMCP("agent-orchestrator")
+mcp = FastMCP("forgent")
 
 # Lazy singletons — built on first tool call so server startup is instant.
 _registry: Optional[Registry] = None
@@ -53,7 +53,7 @@ _orchestrator: Optional[Orchestrator] = None
 
 
 def _db_path() -> str:
-    return os.environ.get("ORCHESTRATOR_DB", "./orchestrator.db")
+    return os.environ.get("FORGENT_DB", "./forgent.db")
 
 
 def _get_registry() -> Registry:
@@ -291,7 +291,7 @@ def route_only(task: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Entry point — referenced by pyproject.toml as `orchestrator-mcp`
+# Entry point — referenced by pyproject.toml as `forgent-mcp`
 # ---------------------------------------------------------------------------
 
 

@@ -16,10 +16,10 @@ route to whichever stack is best."
 ## Architecture
 
 ```
-src/orchestrator/
+src/forgent/
 ├── __init__.py
 ├── orchestrator.py          # top-level Orchestrator class — the entry point
-├── cli.py                   # `orchestrator run "..."` Typer CLI
+├── cli.py                   # `forgent run "..."` Typer CLI
 ├── memory/
 │   ├── store.py             # SQLite + FTS5 knowledge base (the memory system)
 │   └── __init__.py
@@ -44,7 +44,7 @@ sources/                     # cloned upstream repos (read-only inputs to curati
 
 ## The memory system (read this first)
 
-`src/orchestrator/memory/store.py` is the brain. Every task creates a session,
+`src/forgent/memory/store.py` is the brain. Every task creates a session,
 every agent output is persisted, and the next task automatically pulls relevant
 past context via FTS5 full-text search. **Always go through `MemoryStore`** —
 do not store state in module-level globals or in adapter instances.
@@ -52,9 +52,9 @@ do not store state in module-level globals or in adapter instances.
 Key API:
 
 ```python
-from orchestrator.memory import MemoryStore, MemoryType
+from forgent.memory import MemoryStore, MemoryType
 
-mem = MemoryStore("./orchestrator.db")
+mem = MemoryStore("./forgent.db")
 sid = mem.start_session("Build a Stripe webhook handler")
 mem.remember("Used backend-developer agent", MemoryType.ROUTING, session_id=sid)
 mem.remember(agent_output, MemoryType.AGENT_OUTPUT, session_id=sid, tags=["stripe"])
@@ -74,7 +74,7 @@ Why this matters:
 
 ## The agent registry
 
-`src/orchestrator/registry/catalog.yaml` is hand-curated — agents are picked from
+`src/forgent/registry/catalog.yaml` is hand-curated — agents are picked from
 the cloned `sources/` for quality, not auto-imported. Each entry has:
 
 ```yaml
@@ -93,7 +93,7 @@ project is self-contained — sources/ can be deleted after curation.
 
 ## Adapters
 
-All adapters implement `orchestrator.adapters.base.Adapter`:
+All adapters implement `forgent.adapters.base.Adapter`:
 
 ```python
 class Adapter(ABC):
@@ -118,9 +118,9 @@ and translate the response back. Business logic and routing live above them.
 ## Adding a new agent to the registry
 
 1. Find a strong candidate in `sources/` or upstream.
-2. Add an entry to `src/orchestrator/registry/catalog.yaml`.
-3. Run `python -m orchestrator.registry.loader --vendor` to copy the file in.
-4. Run the smoke test: `orchestrator run "test task that should match this agent"`.
+2. Add an entry to `src/forgent/registry/catalog.yaml`.
+3. Run `python -m forgent.registry.loader --vendor` to copy the file in.
+4. Run the smoke test: `forgent run "test task that should match this agent"`.
 
 ## Running
 
@@ -137,12 +137,12 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 # macOS only — clear the UF_HIDDEN flag so Python's site.py picks up the .pth file
 chflags nohidden .venv/lib/python3.13/site-packages/__editable__.*.pth
 cp .env.example .env    # add ANTHROPIC_API_KEY
-.venv/bin/orchestrator run "summarize the differences between LangGraph and CrewAI"
+.venv/bin/forgent run "summarize the differences between LangGraph and CrewAI"
 ```
 
 ### macOS sandbox quirk (important)
 
-If `python -c "import orchestrator"` returns `ModuleNotFoundError` after a clean editable install, the `.pth` file in `.venv/lib/.../site-packages/` has the `UF_HIDDEN` macOS flag set (this happens inside Claude Code's sandbox). Python's `site.py` silently skips hidden `.pth` files. Fix:
+If `python -c "import forgent"` returns `ModuleNotFoundError` after a clean editable install, the `.pth` file in `.venv/lib/.../site-packages/` has the `UF_HIDDEN` macOS flag set (this happens inside Claude Code's sandbox). Python's `site.py` silently skips hidden `.pth` files. Fix:
 
 ```bash
 chflags nohidden .venv/lib/python3.13/site-packages/__editable__.*.pth

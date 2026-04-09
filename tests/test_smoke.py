@@ -11,10 +11,10 @@ import asyncio
 import os
 from pathlib import Path
 
-from orchestrator.adapters.base import Adapter, AdapterResult
-from orchestrator.memory import MemoryStore, MemoryType
-from orchestrator.orchestrator import Orchestrator
-from orchestrator.registry.loader import AgentSpec, Ecosystem, Registry
+from forgent.adapters.base import Adapter, AdapterResult
+from forgent.memory import MemoryStore, MemoryType
+from forgent.orchestrator import Orchestrator
+from forgent.registry.loader import AgentSpec, Ecosystem, Registry
 
 
 class FakeClaudeAdapter(Adapter):
@@ -116,7 +116,7 @@ def test_forge_stub_creates_agent_without_api_key(tmp_path):
 def test_forge_with_auto_forge_routes_to_new_agent(tmp_path, monkeypatch):
     # Force auto-forge by raising the confidence threshold above what the
     # heuristic router can produce.
-    monkeypatch.setattr("orchestrator.orchestrator.FORGE_CONFIDENCE_THRESHOLD", 0.99)
+    monkeypatch.setattr("forgent.orchestrator.FORGE_CONFIDENCE_THRESHOLD", 0.99)
     orch, fake = _fresh_orchestrator(tmp_path)
     result = asyncio.run(orch.run_async(
         "build a thing that does the stuff",
@@ -129,5 +129,5 @@ def test_forge_with_auto_forge_routes_to_new_agent(tmp_path, monkeypatch):
 
 def test_mcp_server_module_imports():
     # Smoke check that the FastMCP server module loads and tools are registered
-    from orchestrator.mcp_server import mcp
-    assert mcp.name == "agent-orchestrator"
+    from forgent.mcp_server import mcp
+    assert mcp.name == "forgent"

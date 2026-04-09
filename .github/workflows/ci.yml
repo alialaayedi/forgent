@@ -43,8 +43,8 @@ jobs:
       - name: Verify wheel installs cleanly
         run: |
           python -m venv /tmp/verify-venv
-          /tmp/verify-venv/bin/pip install dist/agent_orchestrator-*.whl
-          /tmp/verify-venv/bin/orchestrator stats
+          /tmp/verify-venv/bin/pip install dist/forgent-*.whl
+          /tmp/verify-venv/bin/forgent stats
       - uses: actions/upload-artifact@v4
         with:
           name: wheel
