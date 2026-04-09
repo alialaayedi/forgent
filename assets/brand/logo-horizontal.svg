@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" role="img" aria-label="forgent">
+  <title>forgent</title>
+  <desc>Horizontal lockup: spark mark + wordmark. Use in navigation bars, headers, slide footers.</desc>
+
+  <defs>
+    <radialGradient id="orb" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#eb5160" stop-opacity="1"/>
+      <stop offset="55%"  stop-color="#eb5160" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#eb5160" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background optional — leave transparent for flexible placement -->
+
+  <!-- Spark mark (left) -->
+  <g transform="translate(40, 40)">
+    <circle cx="60" cy="60" r="60" fill="url(#orb)"/>
+    <circle cx="60" cy="60" r="50" fill="none" stroke="#eb5160" stroke-width="2" opacity="0.35"/>
+    <circle cx="60" cy="60" r="38" fill="none" stroke="#eb5160" stroke-width="2" opacity="0.55"/>
+    <circle cx="60" cy="60" r="22" fill="#eb5160"/>
+    <circle cx="54" cy="54" r="6"  fill="#dfe0e2" opacity="0.45"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text
+    x="180" y="140"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="120"
+    font-weight="800"
+    fill="#dfe0e2"
+    letter-spacing="-5">forgent</text>
+</svg>

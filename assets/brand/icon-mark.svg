@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="forgent mark">
+  <title>forgent mark</title>
+  <desc>The forgent spark — used as favicon and avatar at small sizes where the wordmark would be unreadable.</desc>
+
+  <defs>
+    <radialGradient id="orb" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#eb5160" stop-opacity="1"/>
+      <stop offset="55%"  stop-color="#eb5160" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#eb5160" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="96" fill="#071013"/>
+
+  <!-- Glow halo -->
+  <circle cx="256" cy="256" r="240" fill="url(#orb)"/>
+
+  <!-- Concentric rings -->
+  <circle cx="256" cy="256" r="200" fill="none" stroke="#eb5160" stroke-width="4" opacity="0.18"/>
+  <circle cx="256" cy="256" r="156" fill="none" stroke="#eb5160" stroke-width="4" opacity="0.32"/>
+  <circle cx="256" cy="256" r="112" fill="none" stroke="#eb5160" stroke-width="4" opacity="0.5"/>
+
+  <!-- The spark — solid pink core -->
+  <circle cx="256" cy="256" r="76" fill="#eb5160"/>
+
+  <!-- Inner highlight -->
+  <circle cx="236" cy="236" r="22" fill="#dfe0e2" opacity="0.45"/>
+</svg>
