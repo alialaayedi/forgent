@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/banner.svg" alt="forgent — grow your own AI subagents on demand" width="100%"/>
+  <img src="https://raw.githubusercontent.com/alialaayedi/forgent/main/assets/brand/banner.svg" alt="forgent — grow your own AI subagents on demand" width="100%"/>
 </p>
 
 # forgent
@@ -9,14 +9,15 @@
 > Ships as a single MCP server. Drop it into Claude Code, Claude Desktop, Cursor, Zed, or any MCP client and every Claude session gets the orchestrator's tools.
 
 <p align="center">
-  <a href="docs/brand.md"><img src="https://img.shields.io/badge/palette-ink_•_lobster_•_taupe_•_silver_•_alabaster-eb5160?style=flat-square&labelColor=071013" alt="brand palette"/></a>
-  <a href="docs/INTEGRATION.md"><img src="https://img.shields.io/badge/MCP-ready-eb5160?style=flat-square&labelColor=071013" alt="MCP ready"/></a>
+  <a href="https://pypi.org/project/forgent/"><img src="https://img.shields.io/pypi/v/forgent?style=flat-square&color=eb5160&labelColor=071013" alt="PyPI"/></a>
+  <a href="https://github.com/alialaayedi/forgent/blob/main/docs/brand.md"><img src="https://img.shields.io/badge/palette-ink_•_lobster_•_taupe_•_silver_•_alabaster-eb5160?style=flat-square&labelColor=071013" alt="brand palette"/></a>
+  <a href="https://github.com/alialaayedi/forgent/blob/main/docs/INTEGRATION.md"><img src="https://img.shields.io/badge/MCP-ready-eb5160?style=flat-square&labelColor=071013" alt="MCP ready"/></a>
   <img src="https://img.shields.io/badge/python-3.10+-b7999c?style=flat-square&labelColor=071013" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/license-MIT-aaaaaa?style=flat-square&labelColor=071013" alt="MIT"/>
 </p>
 
 <p align="center">
-  <img src="assets/brand/demo.gif" alt="forgent in action — stats, search, forge, recall" width="100%"/>
+  <img src="https://raw.githubusercontent.com/alialaayedi/forgent/main/assets/brand/demo.gif" alt="forgent in action — stats, search, forge, recall" width="100%"/>
 </p>
 
 ## Why this exists

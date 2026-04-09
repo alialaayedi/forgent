@@ -1,11 +1,45 @@
 [project]
 name = "forgent"
 version = "0.1.0"
-description = "Meta-orchestrator routing tasks across the best agents from Claude Code subagents, Python frameworks (LangGraph/CrewAI), and MCP servers"
+description = "Meta-orchestrator that grows its own AI subagents on demand. Routes any task across Claude Code subagents, Python frameworks, and MCP servers."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Ali Al Aayedi", email = "ali.alaayedi@gmail.com" }]
+maintainers = [{ name = "Ali Al Aayedi", email = "ali.alaayedi@gmail.com" }]
+keywords = [
+    "agents",
+    "agent-orchestration",
+    "ai-agents",
+    "anthropic",
+    "claude",
+    "claude-code",
+    "crewai",
+    "langgraph",
+    "llm",
+    "llm-agents",
+    "mcp",
+    "mcp-server",
+    "multi-agent",
+    "orchestration",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
 dependencies = [
     "anthropic>=0.40.0",
     "pyyaml>=6.0",
@@ -14,6 +48,15 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "mcp>=1.0.0",
 ]
+
+[project.urls]
+Homepage      = "https://github.com/alialaayedi/forgent"
+Repository    = "https://github.com/alialaayedi/forgent"
+Documentation = "https://github.com/alialaayedi/forgent/blob/main/docs/INTEGRATION.md"
+Issues        = "https://github.com/alialaayedi/forgent/issues"
+Changelog     = "https://github.com/alialaayedi/forgent/blob/main/CHANGELOG.md"
+"Brand guide" = "https://github.com/alialaayedi/forgent/blob/main/docs/brand.md"
+"MCP server"  = "https://github.com/alialaayedi/forgent/blob/main/docs/INTEGRATION.md"
 
 [project.optional-dependencies]
 langgraph = ["langgraph>=0.2.0", "langchain>=0.3.0", "langchain-anthropic>=0.2.0"]
