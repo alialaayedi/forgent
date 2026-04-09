@@ -15,6 +15,10 @@
   <img src="https://img.shields.io/badge/license-MIT-aaaaaa?style=flat-square&labelColor=071013" alt="MIT"/>
 </p>
 
+<p align="center">
+  <img src="assets/brand/demo.gif" alt="forgent in action — stats, search, forge, recall" width="100%"/>
+</p>
+
 ## Why this exists
 
 The agent ecosystem is fragmented into three silos that don't talk to each other:
