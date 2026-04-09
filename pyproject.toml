@@ -5,7 +5,7 @@ description = "Meta-orchestrator routing tasks across the best agents from Claud
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "agent-orchestration" }]
+authors = [{ name = "Ali Al Aayedi", email = "ali.alaayedi@gmail.com" }]
 dependencies = [
     "anthropic>=0.40.0",
     "pyyaml>=6.0",

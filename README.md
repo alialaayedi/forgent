@@ -218,34 +218,9 @@ class Adapter(ABC):
 | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) | official | filesystem, fetch, and other reference MCP servers |
 | [github/github-mcp-server](https://github.com/github/github-mcp-server) | official | GitHub MCP server |
 
-## Support & contributor rewards
+## Contributing
 
-This project is MIT-licensed and free to use forever. If you find it valuable, you can support development in two ways:
-
-- **[GitHub Sponsors](https://github.com/sponsors/alialaayedi)** — recurring or one-time
-- **[Open Collective](https://opencollective.com/subagent-forge)** — fully transparent fund where every dollar in and out is public
-
-### Contributors get a share
-
-Unlike most open-source projects, **a portion of every donation goes back to the people who make this better**. The model:
-
-| What you do | What you get |
-|---|---|
-| Land a merged PR (any size, even docs) | Listed as a contributor and added to the Open Collective as an approved expense recipient |
-| Land 3+ merged PRs in a quarter | Eligible for a quarterly donation split — currently **40% of all donations that quarter** are pooled and split among active contributors weighted by PRs merged |
-| Maintainer-level contributions (architecture, adapters, large features) | Eligible for a larger discretionary share |
-| Become a co-maintainer | Co-control the donation pool and distribution rules |
-
-Distribution is handled transparently through Open Collective so every payout is public. The remaining 60% covers infrastructure (CI, domain, hosted demo) and the lead maintainer's time.
-
-**This is intentional**: I want this project to grow because contributors are *materially* rewarded for shipping, not just thanked in a CHANGELOG. If you've ever wanted to get paid (even a little) for your open-source work, this is the experiment.
-
-### How to start contributing
-
-1. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) — quickstart is `make install && make test`
-2. Pick an issue tagged `good first issue` or `help wanted`
-3. Open a PR. Even a typo fix counts toward the 3-PR threshold.
-4. After merge, you'll be invited to the Open Collective as an approved recipient.
+This project is MIT-licensed and free to use forever. Contributions of any size are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for the quickstart (`make install && make test`).
 
 Ideas for high-value contributions:
 - New ecosystem adapters (AutoGen, Semantic Kernel, Bedrock Agents, Vellum)
@@ -253,6 +228,12 @@ Ideas for high-value contributions:
 - A web dashboard for browsing sessions and forged agents
 - Turning the catalog into a YAML registry that pulls fresh agents from upstream weekly
 - A `forge_from_examples` command that learns a new agent from a few input/output pairs
+
+### Funding model — coming in v0.2
+
+Forgent is experimenting with a contributor-reward model: a portion of donations will be pooled and shared with contributors who land merged PRs, distributed transparently via [Open Collective](https://opencollective.com). The infrastructure (GitHub Sponsors + Open Collective fiscal hosting) is being set up — the funding accounts will go live in v0.2, at which point this section will be replaced with the real signup links and contribution rules.
+
+Until then: contribute because you want the project to exist. Once funding is live, prior contributors will be retroactively credited.
 
 ## License
 
