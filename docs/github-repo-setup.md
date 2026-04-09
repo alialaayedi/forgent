@@ -7,7 +7,7 @@ GitHub identity, so you should do them yourself with eyes on.
 ## 1. Create the repo and push
 
 ```bash
-cd /Users/alikareem/Documents/agent-orchestration
+cd /path/to/forgent
 
 gh repo create forgent \
   --public \

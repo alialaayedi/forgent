@@ -14,7 +14,7 @@ receives security fixes. Older versions are not patched.
 
 **Please do not file public GitHub issues for security problems.**
 
-If you find a vulnerability, email **ali.alaayedi@gmail.com** with:
+If you find a vulnerability, please open a [private security advisory on GitHub](https://github.com/alialaayedi/forgent/security/advisories/new) with:
 
 - A clear description of the issue and the impact
 - Steps to reproduce (a minimal proof-of-concept is ideal)

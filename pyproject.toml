@@ -5,8 +5,8 @@ description = "Meta-orchestrator that grows its own AI subagents on demand. Rout
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Ali Al Aayedi", email = "ali.alaayedi@gmail.com" }]
-maintainers = [{ name = "Ali Al Aayedi", email = "ali.alaayedi@gmail.com" }]
+authors = [{ name = "Ali Al Aayedi", email = "alialaayedi@users.noreply.github.com" }]
+maintainers = [{ name = "Ali Al Aayedi", email = "alialaayedi@users.noreply.github.com" }]
 keywords = [
     "agents",
     "agent-orchestration",

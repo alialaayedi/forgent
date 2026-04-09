@@ -11,7 +11,7 @@ binary works across:
 ## 1. Install once
 
 ```bash
-cd /Users/alikareem/Documents/agent-orchestration
+cd /path/to/forgent
 python3 -m build --wheel              # produces dist/forgent-0.1.0-py3-none-any.whl
 ./scripts/install.sh                  # pipx-install + print registration commands
 ```
@@ -132,7 +132,7 @@ hand-editing `catalog.yaml`.
 ## 7. Updating
 
 ```bash
-cd /Users/alikareem/Documents/agent-orchestration
+cd /path/to/forgent
 git pull             # if you've moved this to a git repo
 python3 -m build --wheel
 pipx install --force dist/forgent-*.whl
