@@ -1,0 +1,628 @@
+# Curated agent registry — hand-picked from the top GitHub repos.
+#
+# Selection criteria:
+#   1. Coverage breadth — every major engineering / product / research domain
+#      should have at least one strong agent.
+#   2. Source repo authority — preference for high-star, actively maintained,
+#      and community-vetted definitions.
+#   3. Definition quality — clear "use when" triggers, structured prompts,
+#      not bloated.
+#
+# Sources (cloned under sources/):
+#   - voltagent-subagents:  VoltAgent/awesome-claude-code-subagents
+#   - wshobson-agents:      wshobson/agents (32.7k+ stars)
+#   - furai-subagents:      0xfurai/claude-code-subagents (138 experts)
+#   - lastmile-mcp-agent:   lastmile-ai/mcp-agent (workflow patterns)
+
+agents:
+
+  # ====================================================================
+  # 01 — Core development
+  # ====================================================================
+  - name: backend-developer
+    ecosystem: claude_code
+    category: core-development
+    source_repo: voltagent-subagents
+    source_path: categories/01-core-development/backend-developer.md
+    description: Server-side APIs, microservices, scalable backends with production hardening
+    capabilities: [api_design, microservices, scalability, security, databases]
+    model: sonnet
+
+  - name: frontend-developer
+    ecosystem: claude_code
+    category: core-development
+    source_repo: voltagent-subagents
+    source_path: categories/01-core-development/frontend-developer.md
+    description: Modern web frontends — React, Vue, accessibility, performance budgets
+    capabilities: [react, vue, accessibility, performance, ui]
+    model: sonnet
+
+  - name: fullstack-developer
+    ecosystem: claude_code
+    category: core-development
+    source_repo: voltagent-subagents
+    source_path: categories/01-core-development/fullstack-developer.md
+    description: End-to-end feature delivery across frontend, backend, and data layers
+    capabilities: [fullstack, feature_delivery, integration]
+    model: sonnet
+
+  - name: api-designer
+    ecosystem: claude_code
+    category: core-development
+    source_repo: voltagent-subagents
+    source_path: categories/01-core-development/api-designer.md
+    description: REST and GraphQL API contract design, versioning, documentation
+    capabilities: [rest, graphql, openapi, contracts, versioning]
+    model: sonnet
+
+  - name: microservices-architect
+    ecosystem: claude_code
+    category: core-development
+    source_repo: voltagent-subagents
+    source_path: categories/01-core-development/microservices-architect.md
+    description: Service decomposition, event-driven systems, distributed patterns
+    capabilities: [microservices, distributed_systems, event_driven, ddd]
+    model: opus
+
+  - name: mobile-developer
+    ecosystem: claude_code
+    category: core-development
+    source_repo: voltagent-subagents
+    source_path: categories/01-core-development/mobile-developer.md
+    description: Cross-platform mobile — React Native, Flutter, native bridges
+    capabilities: [react_native, flutter, ios, android]
+    model: sonnet
+
+  # ====================================================================
+  # 02 — Language specialists
+  # ====================================================================
+  - name: python-pro
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/python-pro.md
+    description: Idiomatic, performant, type-checked Python — async, packaging, profiling
+    capabilities: [python, async, typing, packaging, performance]
+    model: sonnet
+
+  - name: typescript-pro
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/typescript-pro.md
+    description: Type-safe TypeScript at scale — generics, inference, monorepos
+    capabilities: [typescript, types, generics, monorepo]
+    model: sonnet
+
+  - name: golang-pro
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/golang-pro.md
+    description: Idiomatic Go — concurrency, channels, performance, standard library
+    capabilities: [go, concurrency, channels, performance]
+    model: sonnet
+
+  - name: rust-engineer
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/rust-engineer.md
+    description: Safe, fast Rust — ownership, lifetimes, async, no_std
+    capabilities: [rust, ownership, async, systems]
+    model: opus
+
+  - name: java-architect
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/java-architect.md
+    description: Enterprise Java — Spring, JVM tuning, design patterns at scale
+    capabilities: [java, spring, jvm, enterprise]
+    model: opus
+
+  - name: react-specialist
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/react-specialist.md
+    description: React expert — hooks, server components, suspense, performance
+    capabilities: [react, hooks, rsc, performance]
+    model: sonnet
+
+  - name: nextjs-developer
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/nextjs-developer.md
+    description: Next.js app router, server actions, edge runtime, ISR
+    capabilities: [nextjs, ssr, edge, app_router]
+    model: sonnet
+
+  - name: sql-pro
+    ecosystem: claude_code
+    category: language-specialist
+    source_repo: voltagent-subagents
+    source_path: categories/02-language-specialists/sql-pro.md
+    description: Advanced SQL — query optimization, window functions, indexes
+    capabilities: [sql, query_optimization, indexes, postgres, mysql]
+    model: sonnet
+
+  # ====================================================================
+  # 03 — Infrastructure / DevOps / SRE
+  # ====================================================================
+  - name: cloud-architect
+    ecosystem: claude_code
+    category: infrastructure
+    source_repo: voltagent-subagents
+    source_path: categories/03-infrastructure/cloud-architect.md
+    description: Multi-cloud architecture — AWS, GCP, Azure, cost and reliability tradeoffs
+    capabilities: [aws, gcp, azure, architecture, cost_optimization]
+    model: opus
+
+  - name: devops-engineer
+    ecosystem: claude_code
+    category: infrastructure
+    source_repo: voltagent-subagents
+    source_path: categories/03-infrastructure/devops-engineer.md
+    description: CI/CD, IaC, deployment automation, observability
+    capabilities: [cicd, iac, deployment, observability]
+    model: sonnet
+
+  - name: kubernetes-specialist
+    ecosystem: claude_code
+    category: infrastructure
+    source_repo: voltagent-subagents
+    source_path: categories/03-infrastructure/kubernetes-specialist.md
+    description: Kubernetes — operators, networking, security, multi-cluster
+    capabilities: [kubernetes, helm, operators, networking]
+    model: opus
+
+  - name: terraform-engineer
+    ecosystem: claude_code
+    category: infrastructure
+    source_repo: voltagent-subagents
+    source_path: categories/03-infrastructure/terraform-engineer.md
+    description: Production Terraform — modules, state, drift, CI integration
+    capabilities: [terraform, iac, modules, state]
+    model: sonnet
+
+  - name: sre-engineer
+    ecosystem: claude_code
+    category: infrastructure
+    source_repo: voltagent-subagents
+    source_path: categories/03-infrastructure/sre-engineer.md
+    description: SLOs, error budgets, incident response, reliability engineering
+    capabilities: [slo, reliability, incident_response, observability]
+    model: opus
+
+  - name: incident-responder
+    ecosystem: claude_code
+    category: infrastructure
+    source_repo: voltagent-subagents
+    source_path: categories/03-infrastructure/incident-responder.md
+    description: Live incident triage, war room coordination, post-mortems
+    capabilities: [incident_response, triage, postmortem]
+    model: opus
+
+  # ====================================================================
+  # 04 — Quality & security
+  # ====================================================================
+  - name: code-reviewer
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/code-reviewer.md
+    description: Rigorous code review — correctness, style, security, maintainability
+    capabilities: [code_review, refactoring, best_practices]
+    model: opus
+
+  - name: security-auditor
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/security-auditor.md
+    description: Application security audits — OWASP, secrets, dependency CVEs
+    capabilities: [security, owasp, audit, sast]
+    model: opus
+
+  - name: penetration-tester
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/penetration-tester.md
+    description: Authorized pentest engagements — recon, exploit chains, reporting
+    capabilities: [pentest, exploit, recon, reporting]
+    model: opus
+
+  - name: qa-expert
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/qa-expert.md
+    description: Test strategy, coverage planning, regression suites
+    capabilities: [qa, testing, coverage, regression]
+    model: sonnet
+
+  - name: test-automator
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/test-automator.md
+    description: Automated test generation across unit, integration, and e2e layers
+    capabilities: [test_automation, unit, integration, e2e]
+    model: sonnet
+
+  - name: performance-engineer
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/performance-engineer.md
+    description: Profiling, load testing, latency reduction, capacity planning
+    capabilities: [performance, profiling, load_test, latency]
+    model: opus
+
+  - name: debugger
+    ecosystem: claude_code
+    category: quality-security
+    source_repo: voltagent-subagents
+    source_path: categories/04-quality-security/debugger.md
+    description: Methodical debugging — bisect, root cause analysis, repro minimization
+    capabilities: [debugging, root_cause, bisect]
+    model: opus
+
+  # ====================================================================
+  # 05 — Data & AI
+  # ====================================================================
+  - name: ai-engineer
+    ecosystem: claude_code
+    category: data-ai
+    source_repo: voltagent-subagents
+    source_path: categories/05-data-ai/ai-engineer.md
+    description: LLM application engineering — RAG, agents, evals, deployment
+    capabilities: [llm, rag, agents, evals]
+    model: opus
+
+  - name: ml-engineer
+    ecosystem: claude_code
+    category: data-ai
+    source_repo: voltagent-subagents
+    source_path: categories/05-data-ai/ml-engineer.md
+    description: ML model training, feature engineering, productionization
+    capabilities: [ml, training, features, mlops]
+    model: opus
+
+  - name: data-engineer
+    ecosystem: claude_code
+    category: data-ai
+    source_repo: voltagent-subagents
+    source_path: categories/05-data-ai/data-engineer.md
+    description: Data pipelines, warehouses, ETL/ELT, streaming
+    capabilities: [data_pipeline, etl, warehouse, streaming]
+    model: sonnet
+
+  - name: llm-architect
+    ecosystem: claude_code
+    category: data-ai
+    source_repo: voltagent-subagents
+    source_path: categories/05-data-ai/llm-architect.md
+    description: LLM system architecture — routing, caching, fallbacks, cost
+    capabilities: [llm, architecture, routing, cost]
+    model: opus
+
+  - name: prompt-engineer
+    ecosystem: claude_code
+    category: data-ai
+    source_repo: voltagent-subagents
+    source_path: categories/05-data-ai/prompt-engineer.md
+    description: Prompt design, evaluation, optimization, robustness
+    capabilities: [prompts, evals, optimization]
+    model: sonnet
+
+  - name: postgres-pro
+    ecosystem: claude_code
+    category: data-ai
+    source_repo: voltagent-subagents
+    source_path: categories/05-data-ai/postgres-pro.md
+    description: PostgreSQL deep expertise — tuning, replication, extensions
+    capabilities: [postgres, tuning, replication, extensions]
+    model: sonnet
+
+  # ====================================================================
+  # 06 — Developer experience
+  # ====================================================================
+  - name: refactoring-specialist
+    ecosystem: claude_code
+    category: developer-experience
+    source_repo: voltagent-subagents
+    source_path: categories/06-developer-experience/refactoring-specialist.md
+    description: Safe, behavior-preserving refactors at scale
+    capabilities: [refactoring, codemod, safety]
+    model: opus
+
+  - name: mcp-developer
+    ecosystem: claude_code
+    category: developer-experience
+    source_repo: voltagent-subagents
+    source_path: categories/06-developer-experience/mcp-developer.md
+    description: Build MCP servers — protocol expertise, tool design, transport
+    capabilities: [mcp, protocol, tools, server]
+    model: opus
+
+  - name: documentation-engineer
+    ecosystem: claude_code
+    category: developer-experience
+    source_repo: voltagent-subagents
+    source_path: categories/06-developer-experience/documentation-engineer.md
+    description: Developer docs — API references, tutorials, runbooks
+    capabilities: [docs, api_reference, tutorials]
+    model: sonnet
+
+  - name: legacy-modernizer
+    ecosystem: claude_code
+    category: developer-experience
+    source_repo: voltagent-subagents
+    source_path: categories/06-developer-experience/legacy-modernizer.md
+    description: Modernize legacy codebases — strangler fig, incremental migration
+    capabilities: [legacy, migration, modernization]
+    model: opus
+
+  # ====================================================================
+  # 07 — Specialized domains
+  # ====================================================================
+  - name: blockchain-developer
+    ecosystem: claude_code
+    category: specialized
+    source_repo: voltagent-subagents
+    source_path: categories/07-specialized-domains/blockchain-developer.md
+    description: Smart contracts, DeFi, wallet integration, security audits
+    capabilities: [solidity, smart_contracts, defi, web3]
+    model: opus
+
+  - name: payment-integration
+    ecosystem: claude_code
+    category: specialized
+    source_repo: voltagent-subagents
+    source_path: categories/07-specialized-domains/payment-integration.md
+    description: Stripe, PayPal, billing, subscriptions, PCI compliance
+    capabilities: [stripe, paypal, billing, pci]
+    model: sonnet
+
+  - name: fintech-engineer
+    ecosystem: claude_code
+    category: specialized
+    source_repo: voltagent-subagents
+    source_path: categories/07-specialized-domains/fintech-engineer.md
+    description: Trading systems, market data, risk, regulatory compliance
+    capabilities: [fintech, trading, risk, compliance]
+    model: opus
+
+  - name: embedded-systems
+    ecosystem: claude_code
+    category: specialized
+    source_repo: voltagent-subagents
+    source_path: categories/07-specialized-domains/embedded-systems.md
+    description: Firmware, RTOS, hardware drivers, low-level optimization
+    capabilities: [embedded, firmware, rtos, drivers]
+    model: opus
+
+  - name: game-developer
+    ecosystem: claude_code
+    category: specialized
+    source_repo: voltagent-subagents
+    source_path: categories/07-specialized-domains/game-developer.md
+    description: Game engines, gameplay systems, graphics, multiplayer
+    capabilities: [unity, unreal, gameplay, graphics]
+    model: sonnet
+
+  # ====================================================================
+  # 08 — Business / product
+  # ====================================================================
+  - name: product-manager
+    ecosystem: claude_code
+    category: business-product
+    source_repo: voltagent-subagents
+    source_path: categories/08-business-product/product-manager.md
+    description: Product strategy, roadmaps, prioritization, stakeholder alignment
+    capabilities: [pm, roadmap, strategy, prioritization]
+    model: opus
+
+  - name: business-analyst
+    ecosystem: claude_code
+    category: business-product
+    source_repo: voltagent-subagents
+    source_path: categories/08-business-product/business-analyst.md
+    description: Requirements gathering, process modeling, gap analysis
+    capabilities: [requirements, process, analysis]
+    model: sonnet
+
+  - name: technical-writer
+    ecosystem: claude_code
+    category: business-product
+    source_repo: voltagent-subagents
+    source_path: categories/08-business-product/technical-writer.md
+    description: Clear, accurate technical writing — specs, blogs, white papers
+    capabilities: [writing, specs, content]
+    model: sonnet
+
+  - name: ux-researcher
+    ecosystem: claude_code
+    category: business-product
+    source_repo: voltagent-subagents
+    source_path: categories/08-business-product/ux-researcher.md
+    description: User research, interviews, usability tests, synthesis
+    capabilities: [ux, research, interviews, usability]
+    model: sonnet
+
+  # ====================================================================
+  # 09 — Meta-orchestration (these coordinate other agents)
+  # ====================================================================
+  - name: multi-agent-coordinator
+    ecosystem: claude_code
+    category: meta-orchestration
+    source_repo: voltagent-subagents
+    source_path: categories/09-meta-orchestration/multi-agent-coordinator.md
+    description: Coordinates multiple agents on a shared goal — handoffs, conflicts
+    capabilities: [coordination, handoff, planning]
+    model: opus
+
+  - name: workflow-orchestrator
+    ecosystem: claude_code
+    category: meta-orchestration
+    source_repo: voltagent-subagents
+    source_path: categories/09-meta-orchestration/workflow-orchestrator.md
+    description: Multi-step workflow execution with branching and retries
+    capabilities: [workflow, branching, retries]
+    model: opus
+
+  - name: context-manager
+    ecosystem: claude_code
+    category: meta-orchestration
+    source_repo: voltagent-subagents
+    source_path: categories/09-meta-orchestration/context-manager.md
+    description: Manages shared context and memory across multi-agent runs
+    capabilities: [context, memory, state]
+    model: sonnet
+
+  - name: knowledge-synthesizer
+    ecosystem: claude_code
+    category: meta-orchestration
+    source_repo: voltagent-subagents
+    source_path: categories/09-meta-orchestration/knowledge-synthesizer.md
+    description: Aggregates outputs from multiple agents into a coherent answer
+    capabilities: [synthesis, aggregation, summary]
+    model: opus
+
+  # ====================================================================
+  # 10 — Research & analysis
+  # ====================================================================
+  - name: research-analyst
+    ecosystem: claude_code
+    category: research-analysis
+    source_repo: voltagent-subagents
+    source_path: categories/10-research-analysis/research-analyst.md
+    description: Deep research with citations, source evaluation, synthesis
+    capabilities: [research, citations, synthesis]
+    model: opus
+
+  - name: competitive-analyst
+    ecosystem: claude_code
+    category: research-analysis
+    source_repo: voltagent-subagents
+    source_path: categories/10-research-analysis/competitive-analyst.md
+    description: Competitor teardowns, market positioning, SWOT
+    capabilities: [competitive, swot, positioning]
+    model: opus
+
+  - name: market-researcher
+    ecosystem: claude_code
+    category: research-analysis
+    source_repo: voltagent-subagents
+    source_path: categories/10-research-analysis/market-researcher.md
+    description: Market sizing, segmentation, trend analysis
+    capabilities: [market, sizing, trends]
+    model: opus
+
+  - name: search-specialist
+    ecosystem: claude_code
+    category: research-analysis
+    source_repo: voltagent-subagents
+    source_path: categories/10-research-analysis/search-specialist.md
+    description: Advanced web search strategies, source triangulation
+    capabilities: [search, sourcing, triangulation]
+    model: sonnet
+
+  # ====================================================================
+  # Python framework adapters — workflow patterns from lastmile-ai/mcp-agent
+  # These are not single agents; they are orchestration patterns the
+  # PythonFrameworkAdapter knows how to instantiate.
+  # ====================================================================
+  - name: workflow-router
+    ecosystem: python_framework
+    category: meta-orchestration
+    source_repo: lastmile-mcp-agent
+    source_path: src/mcp_agent/workflows/router
+    description: LLM-based router that picks one of N downstream agents per task
+    capabilities: [routing, classification, dispatch]
+    model: sonnet
+    kind: workflow
+
+  - name: workflow-orchestrator-pattern
+    ecosystem: python_framework
+    category: meta-orchestration
+    source_repo: lastmile-mcp-agent
+    source_path: src/mcp_agent/workflows/orchestrator
+    description: Plan-then-execute orchestrator that decomposes tasks into subtasks
+    capabilities: [planning, decomposition, execution]
+    model: opus
+    kind: workflow
+
+  - name: workflow-parallel
+    ecosystem: python_framework
+    category: meta-orchestration
+    source_repo: lastmile-mcp-agent
+    source_path: src/mcp_agent/workflows/parallel
+    description: Fan-out / fan-in parallel execution with result aggregation
+    capabilities: [parallel, fanout, aggregation]
+    model: sonnet
+    kind: workflow
+
+  - name: workflow-evaluator-optimizer
+    ecosystem: python_framework
+    category: meta-orchestration
+    source_repo: lastmile-mcp-agent
+    source_path: src/mcp_agent/workflows/evaluator_optimizer
+    description: Generator + critic loop until output passes evaluation
+    capabilities: [evaluation, iteration, refinement]
+    model: opus
+    kind: workflow
+
+  - name: workflow-swarm
+    ecosystem: python_framework
+    category: meta-orchestration
+    source_repo: lastmile-mcp-agent
+    source_path: src/mcp_agent/workflows/swarm
+    description: OpenAI-style swarm with explicit handoffs between specialized agents
+    capabilities: [swarm, handoff, multi_agent]
+    model: sonnet
+    kind: workflow
+
+  - name: workflow-deep-orchestrator
+    ecosystem: python_framework
+    category: meta-orchestration
+    source_repo: lastmile-mcp-agent
+    source_path: src/mcp_agent/workflows/deep_orchestrator
+    description: Multi-level orchestration for long-horizon, multi-stage research
+    capabilities: [deep_research, multi_stage, long_horizon]
+    model: opus
+    kind: workflow
+
+  # ====================================================================
+  # MCP servers — register MCP tools as first-class agents
+  # ====================================================================
+  - name: mcp-filesystem
+    ecosystem: mcp
+    category: tools
+    source_repo: modelcontextprotocol/servers
+    source_path: filesystem
+    description: Read, write, and search files via the official MCP filesystem server
+    capabilities: [files, read, write, search]
+    server_command: "npx -y @modelcontextprotocol/server-filesystem"
+
+  - name: mcp-github
+    ecosystem: mcp
+    category: tools
+    source_repo: github/github-mcp-server
+    source_path: ""
+    description: GitHub operations via the official GitHub MCP server
+    capabilities: [github, issues, prs, repos]
+    server_command: "github-mcp-server"
+
+  - name: mcp-fetch
+    ecosystem: mcp
+    category: tools
+    source_repo: modelcontextprotocol/servers
+    source_path: fetch
+    description: Web fetch and HTML-to-markdown conversion
+    capabilities: [web, fetch, html]
+    server_command: "npx -y @modelcontextprotocol/server-fetch"
