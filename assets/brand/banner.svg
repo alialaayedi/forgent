@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="forgent — give Claude superpowers">
+  <title>forgent</title>
+  <desc>forgent — meta-orchestrator that grows its own AI subagents on demand</desc>
+
+  <defs>
+    <linearGradient id="spark" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#eb5160"/>
+      <stop offset="60%"  stop-color="#b7999c"/>
+      <stop offset="100%" stop-color="#dfe0e2"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"   stop-color="#eb5160" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#eb5160" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="sparkOrb" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#eb5160" stop-opacity="1"/>
+      <stop offset="60%"  stop-color="#eb5160" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#eb5160" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="360" fill="#071013"/>
+
+  <!-- Subtle grid texture -->
+  <g stroke="#0e1a1f" stroke-width="1">
+    <line x1="0"   y1="60"  x2="1200" y2="60"/>
+    <line x1="0"   y1="120" x2="1200" y2="120"/>
+    <line x1="0"   y1="180" x2="1200" y2="180"/>
+    <line x1="0"   y1="240" x2="1200" y2="240"/>
+    <line x1="0"   y1="300" x2="1200" y2="300"/>
+  </g>
+
+  <!-- Top accent bar -->
+  <rect x="0" y="0" width="1200" height="4" fill="url(#spark)"/>
+
+  <!-- Glow orb (the forge spark) on the right -->
+  <circle cx="1020" cy="180" r="180" fill="url(#sparkOrb)"/>
+  <circle cx="1020" cy="180" r="36"  fill="#eb5160"/>
+  <circle cx="1020" cy="180" r="56"  fill="none" stroke="#eb5160" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="1020" cy="180" r="80"  fill="none" stroke="#eb5160" stroke-width="1.5" opacity="0.3"/>
+  <circle cx="1020" cy="180" r="108" fill="none" stroke="#eb5160" stroke-width="1.5" opacity="0.15"/>
+
+  <!-- Wordmark -->
+  <text
+    x="80" y="200"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="170"
+    font-weight="800"
+    fill="#dfe0e2"
+    letter-spacing="-8">forgent</text>
+
+  <!-- Accent dot in 'i' position (replaces dot of 't' to mark the spark) -->
+  <circle cx="722" cy="78" r="13" fill="#eb5160"/>
+
+  <!-- Tagline -->
+  <text
+    x="84" y="258"
+    font-family="ui-sans-serif, system-ui, -apple-system, sans-serif"
+    font-size="26"
+    font-weight="500"
+    fill="#aaaaaa"
+    letter-spacing="0.5">grow your own AI subagents on demand</text>
+
+  <!-- Sub-tagline -->
+  <text
+    x="84" y="292"
+    font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+    font-size="18"
+    font-weight="400"
+    fill="#b7999c"
+    letter-spacing="0">$ forgent forge "design SAML 2.0 SSO with Okta"</text>
+
+  <!-- Bottom accent bar -->
+  <rect x="0" y="356" width="1200" height="4" fill="url(#spark)"/>
+</svg>

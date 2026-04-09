@@ -1,0 +1,31 @@
+/* forgent brand palette
+ * The canonical color file. Source of truth for every other format.
+ */
+
+:root {
+  /* Core palette */
+  --forgent-ink-black:      #071013;  /* hsl(195, 46%, 5%)  — primary background, deep ground tone */
+  --forgent-lobster-pink:   #eb5160;  /* hsl(354, 79%, 62%) — primary brand accent, the forge spark */
+  --forgent-rosy-taupe:     #b7999c;  /* hsl(354, 17%, 66%) — secondary accent, warm muted neutral */
+  --forgent-silver:         #aaaaaa;  /* hsl(0,   0%,  67%) — metadata, dividers, dim text */
+  --forgent-alabaster-grey: #dfe0e2;  /* hsl(220, 5%,  88%) — primary foreground on dark, light surface */
+
+  /* Semantic aliases (use these in components, not the raw palette) */
+  --forgent-bg:            var(--forgent-ink-black);
+  --forgent-bg-elevated:   #0e1a1f;            /* derived: ink-black + 5% lightness */
+  --forgent-fg:            var(--forgent-alabaster-grey);
+  --forgent-fg-muted:      var(--forgent-silver);
+  --forgent-fg-secondary:  var(--forgent-rosy-taupe);
+  --forgent-accent:        var(--forgent-lobster-pink);
+  --forgent-accent-quiet:  var(--forgent-rosy-taupe);
+  --forgent-border:        var(--forgent-rosy-taupe);
+  --forgent-border-strong: var(--forgent-lobster-pink);
+}
+
+/* Brand gradients — use sparingly, hero moments only */
+:root {
+  --forgent-gradient-spark:    linear-gradient(90deg,  #eb5160 0%, #b7999c 100%);
+  --forgent-gradient-cooling:  linear-gradient(180deg, #eb5160 0%, #071013 100%);
+  --forgent-gradient-full:     linear-gradient(135deg, #071013 0%, #eb5160 35%, #b7999c 70%, #dfe0e2 100%);
+  --forgent-gradient-radial:   radial-gradient(circle at 50% 50%, #eb5160 0%, #b7999c 40%, #071013 100%);
+}

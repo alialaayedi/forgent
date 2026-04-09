@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="forgent">
+  <title>forgent icon</title>
+  <defs>
+    <radialGradient id="orb" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#eb5160" stop-opacity="1"/>
+      <stop offset="55%"  stop-color="#eb5160" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#eb5160" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="96" fill="#071013"/>
+
+  <!-- Glow halo behind the spark -->
+  <circle cx="256" cy="256" r="220" fill="url(#orb)"/>
+
+  <!-- Concentric rings -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#eb5160" stroke-width="3" opacity="0.2"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#eb5160" stroke-width="3" opacity="0.35"/>
+  <circle cx="256" cy="256" r="100" fill="none" stroke="#eb5160" stroke-width="3" opacity="0.55"/>
+
+  <!-- The spark — solid pink core -->
+  <circle cx="256" cy="256" r="64" fill="#eb5160"/>
+
+  <!-- Inner highlight -->
+  <circle cx="240" cy="240" r="18" fill="#dfe0e2" opacity="0.4"/>
+
+  <!-- Wordmark stroke under the orb -->
+  <text
+    x="256" y="448"
+    text-anchor="middle"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'SF Pro Display', sans-serif"
+    font-size="56"
+    font-weight="800"
+    fill="#dfe0e2"
+    letter-spacing="-2">forgent</text>
+</svg>
