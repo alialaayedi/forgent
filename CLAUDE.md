@@ -4,42 +4,57 @@ Guidance for Claude Code working in this repository.
 
 ## What this project is
 
-A **meta-orchestrator for AI agents** — one Python entry point that takes any task,
-classifies it, picks the best curated agent from across three ecosystems
-(Claude Code subagents, Python multi-agent frameworks, MCP servers), runs it,
-and remembers everything for next time.
+A **planning + knowledge layer for AI coding agents** — one Python entry point
+that takes any task, routes it to the best curated domain knowledge pack from
+60+ specialists, and returns a structured **PlanCard** (steps, gotchas, success
+criteria, recalled memory, past outcomes) that the host LLM executes with its
+own tools.
 
-The unique angle: **nobody has unified these three ecosystems into one router**.
-Each is a silo today. The product pitch is "Stripe for AI agents — one API,
-route to whichever stack is best."
+v2 design note: forgent used to run agents itself via per-ecosystem adapters
+with their own tool-use loops. That was a duplication of the host LLM's
+capabilities dressed up as a "persona swap" — and a prompt swap is not a
+specialist. v2 inverts it: the host Claude stays in the driver's seat and
+forgent contributes decomposition, retrieved memory, curated checklists, and
+an outcome feedback loop. No adapters, no in-process tool loops.
+
+The unique angle: **nobody has unified curated specialist knowledge with
+planning + outcome-aware memory for coding agents**. Each ecosystem ships
+personas; forgent ships *plans that learn*.
 
 ## Architecture
 
 ```
 src/forgent/
 ├── __init__.py
-├── orchestrator.py          # top-level Orchestrator class — the entry point
-├── cli.py                   # `forgent run "..."` Typer CLI
+├── orchestrator.py          # thin facade: advise() -> PlanCard, record_outcome(), forge_agent()
+├── cli.py                   # `forgent advise "..."` Typer CLI
+├── mcp_server.py            # stdio MCP server exposing advise_task / report_outcome / ...
 ├── memory/
-│   ├── store.py             # SQLite + FTS5 knowledge base (the memory system)
-│   └── __init__.py
+│   └── store.py             # SQLite + FTS5 memory, includes OUTCOME type for feedback loop
 ├── registry/
-│   ├── loader.py            # parses curated agent .md files into AgentSpec objects
-│   ├── catalog.yaml         # the curated registry — picks the best agents from sources/
-│   └── agents/              # vendored copies of curated agent files
+│   ├── loader.py            # parses curated .md files into AgentSpec objects
+│   ├── forge.py             # AgentForge — synthesizes new knowledge packs on demand
+│   ├── catalog.yaml         # the curated registry
+│   └── agents/              # vendored knowledge pack bodies
 ├── router/
-│   └── router.py            # LLM-based task → agent classifier
-└── adapters/
-    ├── base.py              # Adapter ABC
-    ├── claude_code.py       # runs Claude Code subagent .md files via Anthropic API
-    ├── python_framework.py  # wraps LangGraph / CrewAI / OpenAI Agents SDK
-    └── mcp_server.py        # spawns MCP servers via stdio
+│   └── router.py            # LLM task classifier, factors in past OUTCOMEs
+└── planner/
+    └── planner.py           # Planner + PlanCard — the heart of v2
 
 sources/                     # cloned upstream repos (read-only inputs to curation)
-├── wshobson-agents/         # 32.7k★ — 182 agents in plugin structure
-├── voltagent-subagents/     # 100+ agents organized by category
-├── furai-subagents/         # 138 single-file experts
-└── lastmile-mcp-agent/      # MCP-based Python framework with workflow patterns
+```
+
+### The v2 flow
+
+```
+task
+  -> router.route(task)                 # pick knowledge pack
+  -> memory.context_for(task)           # recall prior plans/outcomes/decisions
+  -> memory.recent_outcomes(agent)      # pull feedback for that pack
+  -> planner.plan(task, decision, ...)  # LLM tool-use -> PlanCard
+  -> PlanCard.to_markdown()             # returned from advise_task
+  -> [host LLM executes with own tools]
+  -> report_outcome(session, success, notes) # closes the loop
 ```
 
 ## The memory system (read this first)
@@ -65,8 +80,8 @@ context = mem.context_for("add a refund endpoint to my Stripe integration")
 ```
 
 Why this matters:
-- The orchestrator gets smarter over time — past routing decisions inform future ones.
-- Cross-ecosystem handoff works because every adapter writes to the same store.
+- The planner gets smarter over time — past plans, routing decisions, AND outcomes feed the next task.
+- `MemoryType.OUTCOME` closes the feedback loop: `record_outcome(session, success, notes, agent)` after a task is done, and the next plan for the same domain surfaces that history as gotchas.
 - Recall is keyword (FTS5/BM25), not embedding — zero external dependencies, fast.
 - An optional embedding column can be added later without changing the API.
 
@@ -91,28 +106,48 @@ the cloned `sources/` for quality, not auto-imported. Each entry has:
 The loader vendors a copy into `registry/agents/<ecosystem>/<name>.md` so the
 project is self-contained — sources/ can be deleted after curation.
 
-## Adapters
+## The planner and PlanCard
 
-All adapters implement `forgent.adapters.base.Adapter`:
+`src/forgent/planner/planner.py` is the centerpiece of v2. It takes a task
+plus the routed knowledge pack body and produces a structured `PlanCard`:
 
 ```python
-class Adapter(ABC):
-    ecosystem: str
-
-    async def run(self, agent: AgentSpec, task: str, context: str) -> AdapterResult: ...
+@dataclass
+class PlanCard:
+    task: str
+    session_id: str
+    primary_agent: str                 # knowledge pack name
+    supporting: list[str]
+    confidence: float
+    routing_reasoning: str
+    knowledge_pack_summary: str        # 2-4 sentences, distilled for THIS task
+    steps: list[str]                   # 3-6 concrete imperative steps
+    gotchas: list[str]                 # specific failure modes
+    success_criteria: list[str]        # verifiable "done" conditions
+    recalled_memory: str               # from memory.context_for()
+    past_outcomes: list[str]           # from memory.recent_outcomes(agent)
+    forged: bool
+    heuristic: bool                    # true when no API key (deterministic fallback)
 ```
 
-Keep adapters narrow. They translate from the orchestrator's neutral
-`(agent, task, context)` shape to whatever the underlying ecosystem expects,
-and translate the response back. Business logic and routing live above them.
+`PlanCard.to_markdown()` is the string returned by `advise_task`. It opens
+with the assignment block (which the host is instructed to echo to the user),
+then the host instructions, knowledge synthesis, steps, gotchas, success
+criteria, past outcomes, and recalled memory.
+
+**The planner is NOT writing a persona.** It's compiling domain knowledge
+into a task-specific plan. "You are X" framing is banned; "here's what done
+looks like, here are the gotchas, here's what prior sessions remembered"
+framing is required.
 
 ## Conventions
 
 - **Python ≥ 3.10**, type hints required on public APIs.
 - **No emojis** in code, comments, or markdown (CLI output is fine to format with `rich`).
-- **Async by default** in adapters — orchestrator runs them in `asyncio.gather` when fanning out.
 - **Don't import from `sources/`** at runtime. Treat it as a build-time input only.
 - **Don't bypass `MemoryStore`** — it is the single source of truth for state.
+- **Don't resurrect the adapter layer.** If you feel the urge to "run the agent"
+  inside forgent, stop. The host LLM runs it. Forgent plans.
 - **Tests live in `tests/`**, mirror the `src/` layout, prefer `pytest`.
 
 ## Adding a new agent to the registry
@@ -120,7 +155,7 @@ and translate the response back. Business logic and routing live above them.
 1. Find a strong candidate in `sources/` or upstream.
 2. Add an entry to `src/forgent/registry/catalog.yaml`.
 3. Run `python -m forgent.registry.loader --vendor` to copy the file in.
-4. Run the smoke test: `forgent run "test task that should match this agent"`.
+4. Run the smoke test: `forgent advise "test task that should match this agent"`.
 
 ## Running
 
@@ -137,7 +172,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 # macOS only — clear the UF_HIDDEN flag so Python's site.py picks up the .pth file
 chflags nohidden .venv/lib/python3.13/site-packages/__editable__.*.pth
 cp .env.example .env    # add ANTHROPIC_API_KEY
-.venv/bin/forgent run "summarize the differences between LangGraph and CrewAI"
+.venv/bin/forgent advise "summarize the differences between LangGraph and CrewAI"
 ```
 
 ### macOS sandbox quirk (important)

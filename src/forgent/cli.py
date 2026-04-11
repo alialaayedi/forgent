@@ -1,12 +1,16 @@
 """Typer CLI — the user-facing entry point.
 
 Commands:
-    orchestrator run "<task>"             — execute a task
-    orchestrator agents list              — list curated agents
-    orchestrator agents search "<query>"  — find agents by keyword
-    orchestrator memory stats             — show what's in the memory store
-    orchestrator memory recall "<query>"  — pull relevant past context
-    orchestrator vendor                   — copy source files into the registry
+    forgent advise "<task>"            — build a PlanCard (plan, gotchas, success)
+    forgent agents list                — list curated agents
+    forgent agents search "<query>"    — find agents by keyword
+    forgent memory stats               — show what's in the memory store
+    forgent memory recall "<query>"    — pull relevant past context
+    forgent vendor                     — copy source files into the registry
+
+forgent is a planning + knowledge layer: `advise` returns a structured plan
+card for the host LLM to execute with its own tools. It does not run agents
+itself -- that was the v1 model.
 """
 
 from __future__ import annotations
@@ -22,7 +26,6 @@ from rich.table import Table
 
 from forgent.memory import MemoryStore, MemoryType
 from forgent.orchestrator import Orchestrator
-from forgent.progress import cli_progress
 from forgent.registry.loader import Registry, Ecosystem
 from forgent.theme import COLORS, console
 
@@ -40,42 +43,91 @@ def _db_path() -> str:
 
 
 @app.command()
-def run(
-    task: str = typer.Argument(..., help="The task to run, in plain English."),
-    show_decision: bool = typer.Option(True, help="Print the routing decision before output."),
-    auto_forge: bool = typer.Option(False, "--auto-forge", help="Synthesize a fresh specialist if router confidence is low."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Disable the live progress spinner."),
+def advise(
+    task: str = typer.Argument(..., help="The task to plan, in plain English."),
+    auto_forge: bool = typer.Option(True, "--auto-forge/--no-forge", help="Synthesize a fresh knowledge pack if router confidence is low."),
 ):
-    """Run a task end-to-end: route -> dispatch -> remember."""
+    """Plan a task: route -> recall memory -> build a PlanCard.
+
+    Returns a structured plan card with steps, gotchas, success criteria, and
+    recalled memory. Execute the plan yourself (or pipe it to a coding agent
+    via MCP) and then call `forgent outcome` to close the feedback loop.
+    """
     orch = Orchestrator(db_path=_db_path())
     console.print(Panel(task, title="[title]task[/title]", border_style=COLORS.border_strong))
 
-    if quiet:
-        result = orch.run(task, auto_forge=auto_forge)
-    else:
-        with cli_progress(console=console) as progress:
-            result = orch.run(task, auto_forge=auto_forge, progress=progress)
+    plan = orch.advise(task, auto_forge=auto_forge)
 
-    if show_decision:
-        d = result.decision
+    # Routing pane
+    sup = ", ".join(plan.supporting) or "—"
+    mode_tag = " (heuristic)" if plan.heuristic else ""
+    console.print(
+        Panel(
+            f"[label]knowledge[/label]   [accent]{plan.primary_agent}[/accent]\n"
+            f"[label]supporting[/label]  [secondary]{sup}[/secondary]\n"
+            f"[label]confidence[/label]  [secondary]{plan.confidence:.2f}{mode_tag}[/secondary]\n"
+            f"[label]reason[/label]      [muted]{plan.routing_reasoning}[/muted]",
+            title="[subtitle]plan card[/subtitle]",
+            border_style=COLORS.border,
+        )
+    )
+
+    if plan.knowledge_pack_summary:
         console.print(
             Panel(
-                f"[label]primary[/label]    [accent]{d.primary}[/accent]\n"
-                f"[label]supporting[/label] [secondary]{', '.join(d.supporting) or '—'}[/secondary]\n"
-                f"[label]mode[/label]       [secondary]{d.mode}[/secondary]\n"
-                f"[label]confidence[/label] [secondary]{d.confidence:.2f}[/secondary]\n"
-                f"[label]reasoning[/label]  [muted]{d.reasoning}[/muted]",
-                title="[subtitle]routing decision[/subtitle]",
+                plan.knowledge_pack_summary,
+                title="[subtitle]knowledge synthesis[/subtitle]",
                 border_style=COLORS.border,
             )
         )
-    border = "green" if result.success else COLORS.accent
-    body = result.output or "[muted](no output)[/muted]"
-    errors = [f"[{r.agent}] {r.error}" for r in result.results if r.error]
-    if errors:
-        body = body + "\n\n[error]errors:[/error]\n" + "\n".join(errors)
-    console.print(Panel(body, title="[title]result[/title]", border_style=border))
-    console.print(f"[muted]session_id={result.session_id}[/muted]")
+
+    if plan.steps:
+        steps_text = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan.steps))
+        console.print(
+            Panel(steps_text, title="[subtitle]plan[/subtitle]", border_style=COLORS.border)
+        )
+
+    if plan.gotchas:
+        gotchas_text = "\n".join(f"- {g}" for g in plan.gotchas)
+        console.print(
+            Panel(gotchas_text, title="[subtitle]gotchas[/subtitle]", border_style=COLORS.accent)
+        )
+
+    if plan.success_criteria:
+        sc_text = "\n".join(f"- {c}" for c in plan.success_criteria)
+        console.print(
+            Panel(sc_text, title="[subtitle]success criteria[/subtitle]", border_style=COLORS.border)
+        )
+
+    if plan.past_outcomes:
+        outcomes_text = "\n".join(f"- {o}" for o in plan.past_outcomes)
+        console.print(
+            Panel(
+                outcomes_text,
+                title="[subtitle]past outcomes on similar tasks[/subtitle]",
+                border_style=COLORS.border,
+            )
+        )
+
+    console.print(f"[muted]session_id={plan.session_id}[/muted]")
+    console.print(
+        f"[muted]after execution, run:[/muted] [accent]forgent outcome {plan.session_id[:8]}"
+        f" --success/--failure \"notes\"[/accent]"
+    )
+
+
+@app.command()
+def outcome(
+    session_id: str = typer.Argument(..., help="Session id from a prior `advise` call."),
+    success: bool = typer.Option(True, "--success/--failure", help="Did the task complete successfully?"),
+    notes: str = typer.Option("", "--notes", help="Optional free-form notes about what happened."),
+    agent: Optional[str] = typer.Option(None, "--agent", help="Agent/knowledge pack name this outcome is for."),
+):
+    """Record whether a planned task succeeded. Feeds routing for next time."""
+    orch = Orchestrator(db_path=_db_path())
+    orch.record_outcome(session_id=session_id, success=success, notes=notes, agent_name=agent)
+    status = "[success]success[/success]" if success else "[error]failure[/error]"
+    console.print(f"[muted]outcome recorded for[/muted] [accent]{session_id[:8]}[/accent]: {status}")
 
 
 @agents_app.command("list")

@@ -207,10 +207,24 @@ class Router:
         return "\n".join(lines)
 
     def _past_decisions(self, task: str, k: int = 3) -> str:
+        """Assemble few-shot context: prior routing decisions AND their outcomes.
+
+        Pulling outcomes alongside decisions lets the LLM router notice that
+        agent X failed last time on a similar task and pick something else --
+        the feedback loop the v1 router was missing.
+        """
         if self.memory is None:
             return ""
         from forgent.memory.store import MemoryType
-        entries = self.memory.recall(task, limit=k, type=MemoryType.ROUTING)
-        if not entries:
-            return ""
-        return "\n".join(f"- {e.content}" for e in entries)
+        routing_entries = self.memory.recall(task, limit=k, type=MemoryType.ROUTING)
+        outcome_entries = self.memory.recall(task, limit=k, type=MemoryType.OUTCOME)
+        lines: list[str] = []
+        if routing_entries:
+            lines.append("Prior routing decisions:")
+            lines.extend(f"- {e.content}" for e in routing_entries)
+        if outcome_entries:
+            if lines:
+                lines.append("")
+            lines.append("Prior outcomes (factor these in -- prefer agents that succeeded):")
+            lines.extend(f"- {e.content}" for e in outcome_entries)
+        return "\n".join(lines)

@@ -1,21 +1,24 @@
-"""forgent — a meta-orchestrator that routes tasks across Claude Code
-subagents, Python multi-agent frameworks, and MCP servers, and forges
-brand-new specialist subagents on demand.
+"""forgent — planning + knowledge layer for AI coding agents.
 
-The big idea: you don't pick a framework, you pick a task. forgent classifies
-the task, finds the best curated agent for it (across ecosystems), and runs
-it — handing off shared state if multiple agents are needed. When no curated
-agent fits, it grows a new specialist via the AgentForge.
+You give forgent a task. It routes to the best-matching curated knowledge
+pack from 60+ specialists, pulls relevant memory and prior outcomes, and
+returns a structured PlanCard (steps, gotchas, success criteria, recalled
+context). The host LLM executes the plan with its own tools, then calls
+record_outcome to close the feedback loop. When no curated pack fits, the
+AgentForge synthesizes a new one on demand.
 """
 
-from forgent.registry.loader import Registry, AgentSpec
-from forgent.registry.forge import AgentForge, ForgedAgent
-from forgent.router.router import Router, RoutingDecision
 from forgent.orchestrator import Orchestrator
+from forgent.planner import PlanCard, Planner
+from forgent.registry.forge import AgentForge, ForgedAgent
+from forgent.registry.loader import AgentSpec, Registry
+from forgent.router.router import Router, RoutingDecision
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "Orchestrator",
+    "Planner",
+    "PlanCard",
     "Registry",
     "AgentSpec",
     "AgentForge",

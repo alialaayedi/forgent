@@ -88,3 +88,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "forgent.registry" = ["*.yaml"]
 "forgent.registry.agents.claude_code" = ["*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["sources", ".venv", "build", "dist"]

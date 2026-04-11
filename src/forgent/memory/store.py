@@ -41,6 +41,8 @@ class MemoryType(str, Enum):
     AGENT_DOC = "agent_doc"        # curated agent definition (system prompt)
     NOTE = "note"                  # free-form note from the user or system
     ARTIFACT = "artifact"          # file path or blob produced by an agent
+    PLAN = "plan"                  # a PlanCard produced by the planner
+    OUTCOME = "outcome"            # did the plan work? (success/failure + notes)
 
 
 @dataclass
@@ -186,6 +188,56 @@ class MemoryStore:
         for content, type_ in entries:
             self.remember(content, type_, **kwargs)
 
+    def record_outcome(
+        self,
+        session_id: str,
+        success: bool,
+        notes: str = "",
+        agent_name: str | None = None,
+    ) -> MemoryEntry:
+        """Persist whether a planned task worked.
+
+        The content string is a human- and FTS-readable one-liner so the router
+        can grep it directly; agent name lives in tags for fast filtering.
+        """
+        status = "success" if success else "failure"
+        content = f"outcome={status}"
+        if agent_name:
+            content += f" agent={agent_name}"
+        if notes:
+            content += f" notes={notes}"
+        tags = ["outcome", status]
+        if agent_name:
+            tags.append(agent_name)
+        return self.remember(
+            content,
+            MemoryType.OUTCOME,
+            session_id=session_id,
+            tags=tags,
+            source=agent_name,
+        )
+
+    def recent_outcomes(
+        self,
+        agent_name: str | None = None,
+        limit: int = 10,
+    ) -> list[MemoryEntry]:
+        """Return the most recent outcome entries, optionally for one agent."""
+        if agent_name:
+            sql = (
+                "SELECT * FROM memories WHERE type=? AND source=? "
+                "ORDER BY created_at DESC LIMIT ?"
+            )
+            rows = self._conn.execute(
+                sql, (MemoryType.OUTCOME.value, agent_name, limit)
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM memories WHERE type=? ORDER BY created_at DESC LIMIT ?",
+                (MemoryType.OUTCOME.value, limit),
+            ).fetchall()
+        return [_row_to_entry(r) for r in rows]
+
     # ----- reads ------------------------------------------------------------
 
     def recall(
@@ -266,7 +318,8 @@ class MemoryStore:
         (e.g. on the very first run).
         """
         buckets = [
-            ("Relevant past outputs",   self.recall(task, k, MemoryType.AGENT_OUTPUT)),
+            ("Relevant past plans",     self.recall(task, k, MemoryType.PLAN)),
+            ("Relevant past outcomes",  self.recall(task, k, MemoryType.OUTCOME)),
             ("Relevant past decisions", self.recall(task, k, MemoryType.ROUTING)),
             ("Relevant institutional knowledge", self.recall(task, k, MemoryType.NOTE)),
         ]
