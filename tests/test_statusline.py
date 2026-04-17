@@ -85,6 +85,7 @@ def test_render_line_populated_includes_pack_and_wins(monkeypatch, tmp_path):
     mem.write_note("/notes/auth", "handler at src/api/auth.ts:42")
 
     monkeypatch.setenv("FORGENT_DB", str(db))
+    monkeypatch.setenv("COLUMNS", "200")  # wide enough to keep all segments
     line = statusline_mod.render_line(
         {"cwd": str(tmp_path), "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"}}
     )
@@ -133,7 +134,8 @@ def test_context_label_parses_transcript(monkeypatch, tmp_path):
             "transcript_path": str(tx),
         }
     )
-    assert "ctx" in line
+    # v0.4: no literal "ctx" word -- the progress bar is the indicator.
+    # We only need to see the % and the til-compact countdown.
     assert "14%" in line or "15%" in line  # 140k/1M ~= 14%
     assert "til compact" in line
 
@@ -156,10 +158,12 @@ def test_context_label_flags_near_compact(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setenv("FORGENT_DB", str(tmp_path / "empty.db"))
+    monkeypatch.setenv("FORGENT_COMPACT_PCT", "60")
+    monkeypatch.setenv("COLUMNS", "200")
     line = statusline_mod.render_line(
         {"cwd": str(tmp_path), "model": {"id": "claude-opus-4-7"}, "transcript_path": str(tx)}
     )
-    # 92% >= default threshold -> should surface "compact now"
+    # 92% >= 60% threshold -> should surface "compact now"
     assert "compact now" in line
 
 
@@ -241,26 +245,33 @@ def test_uninstall_no_op_when_not_ours(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------- first-run banner
 
 
-def test_first_advise_triggers_banner_then_suppressed(monkeypatch, tmp_path):
+def test_first_advise_auto_configures_then_silent(monkeypatch, tmp_path):
+    """v0.4: first advise silently configures statusline+autocompact; subsequent calls are quiet."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
     monkeypatch.setenv("FORGENT_CONFIG", str(tmp_path / "config.json"))
     monkeypatch.setenv("FORGENT_DB", str(tmp_path / "forgent.db"))
-    # The mcp_server module holds lazy singletons; reset them so we get a
-    # fresh config tied to tmp_path.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
     import importlib
 
     import forgent.mcp_server as mcp_mod
     importlib.reload(mcp_mod)
 
     out1 = asyncio.run(mcp_mod.advise_task("test task one"))
-    assert "forgent -- first-run setup" in out1
-    assert "forgent statusline enable" in out1
+    # First call: short notice is prepended AND settings.json is patched.
+    assert "auto-configured" in out1
+    settings = fake_home / ".claude" / "settings.json"
+    assert settings.exists()
+    data = json.loads(settings.read_text())
+    assert "statusLine" in data
+    assert data.get("env", {}).get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "60"
 
     out2 = asyncio.run(mcp_mod.advise_task("test task two"))
-    assert "forgent -- first-run setup" not in out2
+    # Second call: no notice.
+    assert "auto-configured" not in out2
 
 
-def test_banner_suppressed_if_already_prompted(monkeypatch, tmp_path):
-    # Pre-populate the config as already prompted.
+def test_advise_silent_if_already_prompted(monkeypatch, tmp_path):
     cfg = ForgentConfig.load(tmp_path / "config.json")
     cfg.mark_consent_prompted()
 
@@ -272,4 +283,4 @@ def test_banner_suppressed_if_already_prompted(monkeypatch, tmp_path):
     importlib.reload(mcp_mod)
 
     out = asyncio.run(mcp_mod.advise_task("task"))
-    assert "forgent -- first-run setup" not in out
+    assert "auto-configured" not in out

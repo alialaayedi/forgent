@@ -313,6 +313,88 @@ def forge(
 
 
 @app.command()
+def verify(
+    detectors: Optional[str] = typer.Option(None, "--only", help="Comma-separated detector names to run. Default: all (git_diff,tests,lint,ci)."),
+):
+    """Run forgent's outcome verifier in the current working directory.
+
+    Runs each detector in parallel: git_diff (did files change?), tests (run
+    the project test suite), lint (lint the working tree), ci (check the
+    latest GitHub Actions run). Returns evidence-backed pass/fail/skip per
+    detector. Skipped detectors are those that can't run in this cwd (no
+    test runner detected, etc.) and don't affect the verdict.
+    """
+    from forgent.verify import Verifier
+    subset = [n.strip() for n in detectors.split(",")] if detectors else None
+    result = Verifier().run(os.getcwd(), subset=subset)
+    rows: list[str] = []
+    for r in result.ran + result.skipped:
+        icon = {"pass": "[success]ok[/success]", "fail": "[error]FAIL[/error]", "unknown": "[muted]skip[/muted]"}[r.status]
+        rows.append(f"{icon} [label]{r.name}[/label] [muted]({r.duration_ms}ms)[/muted] -- {r.evidence}")
+    verdict = "[success]PASS[/success]" if result.success else "[error]FAIL[/error]"
+    console.print(
+        Panel(
+            "\n".join(rows) + f"\n\n[label]verdict[/label]  {verdict}\n{result.to_summary()}",
+            title="[title]verifier[/title]",
+            border_style=COLORS.border_strong,
+        )
+    )
+    if not result.success:
+        raise typer.Exit(1)
+
+
+@app.command()
+def autocompact(
+    pct: str = typer.Argument(..., help="Percent (1-99) or 'reset' to remove the override."),
+    scope: str = typer.Option("user", "--scope", help="Where to write: 'user' (~/.claude) or 'project' (./.claude)."),
+):
+    """Set Claude Code's auto-compact threshold via CLAUDE_AUTOCOMPACT_PCT_OVERRIDE.
+
+    Claude Code's default threshold is ~92%, meaning conversations rarely get
+    compacted until context is almost full. Lowering it (e.g. to 60%) makes
+    Claude Code compact sooner, keeping answers crisp across longer sessions.
+
+    This writes to ~/.claude/settings.json (or ./.claude/settings.json with
+    --scope=project) and aligns forgent's own compact countdown in the
+    status line.
+    """
+    if scope not in ("user", "project"):
+        console.print("[error]scope must be 'user' or 'project'[/error]")
+        raise typer.Exit(2)
+    if pct.lower() in ("reset", "off", "none"):
+        path = statusline_mod.set_autocompact(None, scope=scope)
+        console.print(
+            f"[success]auto-compact override removed[/success] "
+            f"[muted]({path})[/muted]"
+        )
+        return
+    try:
+        n = int(pct)
+    except ValueError:
+        console.print(f"[error]invalid value '{pct}' -- expected 1-99 or 'reset'[/error]")
+        raise typer.Exit(2)
+    if not (1 <= n <= 99):
+        console.print("[error]pct must be between 1 and 99[/error]")
+        raise typer.Exit(2)
+    path = statusline_mod.set_autocompact(n, scope=scope)
+    warn = ""
+    if n < 40:
+        warn = "\n[warning]heads-up: below 40% means very frequent compaction[/warning]"
+    elif n > 90:
+        warn = "\n[warning]heads-up: above 90% is close to default -- little effect[/warning]"
+    console.print(
+        Panel(
+            f"[label]CLAUDE_AUTOCOMPACT_PCT_OVERRIDE[/label]  [secondary]{n}[/secondary]\n"
+            f"[label]settings.json[/label]  [muted]{path}[/muted]\n\n"
+            "[muted]Restart Claude Code to pick up the new threshold.[/muted]"
+            f"{warn}",
+            title="[title]auto-compact[/title]",
+            border_style=COLORS.border_strong,
+        )
+    )
+
+
+@app.command()
 def stats():
     """High-level overview: how many agents, how many sessions, what's in memory."""
     reg = Registry.load()
@@ -339,19 +421,27 @@ def stats():
 @statusline_app.command("enable")
 def statusline_enable(
     scope: str = typer.Option("user", "--scope", help="Where to install: 'user' (~/.claude) or 'project' (./.claude)."),
+    autocompact: int = typer.Option(60, "--autocompact", help="Also set Claude Code's auto-compact threshold (1-99). Use 0 to skip."),
 ):
     """Enable the forgent status line and wire it into Claude Code settings."""
     if scope not in ("user", "project"):
         console.print("[error]scope must be 'user' or 'project'[/error]")
         raise typer.Exit(2)
-    path = statusline_mod.install(scope=scope)
+    autocompact_pct = autocompact if autocompact else None
+    path = statusline_mod.install(scope=scope, autocompact_pct=autocompact_pct)
     cfg = ForgentConfig.load()
     cfg.record_statusline_choice("accepted")
+    extra_line = (
+        f"[label]auto-compact[/label]  [secondary]{autocompact}% (via CLAUDE_AUTOCOMPACT_PCT_OVERRIDE)[/secondary]\n"
+        if autocompact_pct
+        else ""
+    )
     console.print(
         Panel(
             f"[success]enabled[/success] [muted]({scope} scope)[/muted]\n"
             f"[label]settings.json[/label]  [secondary]{path}[/secondary]\n"
-            f"[label]command[/label]        [secondary]forgent-statusline[/secondary]\n\n"
+            f"[label]command[/label]        [secondary]forgent-statusline[/secondary]\n"
+            f"{extra_line}\n"
             "[muted]Restart Claude Code to see the new status line.[/muted]",
             title="[title]forgent status line[/title]",
             border_style=COLORS.border_strong,
@@ -397,6 +487,31 @@ def statusline_show():
     console.print(line)
 
 
+@statusline_app.command("preview")
+def statusline_preview(
+    mode: Optional[str] = typer.Option(None, "--mode", help="Preview a specific mode: minimal | powerline | capsule | compact. Omit to show all."),
+    theme: Optional[str] = typer.Option(None, "--theme", help="Preview with a specific theme: dark | light | highcontrast."),
+):
+    """Preview the status line locally with realistic fake data. Doesn't touch settings."""
+    import json as _json
+    import time as _time
+    ctx = {
+        "cwd": os.getcwd(),
+        "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"},
+        "session_id": "preview-session-abcdef",
+        "cost": {"total_cost_usd": 0.27},
+        "rate_limits": {"five_hour": {"used_percentage": 23.5}},
+        "context_window": {"used_percentage": 38, "context_window_size": 1_000_000},
+    }
+    modes = [mode] if mode else ["minimal", "powerline", "capsule", "compact"]
+    for m in modes:
+        console.print(f"\n[subtitle]{m}[/subtitle]")
+        line = statusline_mod.render_line(ctx, mode=m, theme_name=theme, width=200)
+        # Rich doesn't render raw ANSI in Panel; print directly.
+        import sys as _sys
+        _sys.stdout.write(line + "\n")
+
+
 @statusline_app.command("status")
 def statusline_status():
     """Report current consent + install state."""
@@ -414,6 +529,130 @@ def statusline_status():
             f"[label]config file[/label]      [muted]{cfg.path}[/muted]",
             title="[title]forgent status line[/title]",
             border_style=COLORS.border,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Marketplace / IDE / team / evals (v0.4 scaffolds)
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def install(name_or_url: str = typer.Argument(..., help="Known pack name (wshobson-agents, voltagent, furai) or a git URL.")):
+    """Install a community agent pack into forgent's registry.
+
+    Examples:
+        forgent install wshobson-agents
+        forgent install https://github.com/some-user/cool-agents
+    """
+    from forgent.marketplace import install as do_install, KNOWN_PACKS
+    try:
+        result = do_install(name_or_url)
+    except Exception as exc:
+        console.print(f"[error]install failed:[/error] {exc}")
+        raise typer.Exit(1)
+    console.print(
+        Panel(
+            f"[label]pack[/label]          [accent]{result.pack_name}[/accent]\n"
+            f"[label]source[/label]        [muted]{result.source_url}[/muted]\n"
+            f"[label]agents added[/label]  [secondary]{result.agents_added}[/secondary]\n"
+            f"[label]destination[/label]   [muted]{result.destination}[/muted]\n\n"
+            "[muted]Run `forgent agents list` to see them.[/muted]",
+            title="[title]pack installed[/title]",
+            border_style=COLORS.border_strong,
+        )
+    )
+
+
+@app.command("setup-ide")
+def setup_ide(
+    editor: str = typer.Argument(..., help="claude-code | claude-desktop | cursor | cline | roo | zed | continue"),
+):
+    """Print the MCP config snippet for an editor. No files written."""
+    from forgent.ide_setup import snippet_for
+    try:
+        snip = snippet_for(editor)
+    except ValueError as exc:
+        console.print(f"[error]{exc}[/error]")
+        raise typer.Exit(2)
+    console.print(
+        Panel(
+            f"[label]editor[/label]      [accent]{snip.editor}[/accent]\n"
+            f"[label]config file[/label] [muted]{snip.config_path}[/muted]\n"
+            f"[label]format[/label]      [secondary]{snip.format}[/secondary]\n\n"
+            f"[muted]{snip.notes}[/muted]",
+            title="[title]forgent + MCP[/title]",
+            border_style=COLORS.border_strong,
+        )
+    )
+    console.print("\n[subtitle]paste this[/subtitle]")
+    import sys as _sys
+    _sys.stdout.write(snip.snippet + "\n")
+
+
+team_app = typer.Typer(help="Team-scoped memory (scaffolded for v0.4, full RBAC deferred).")
+app.add_typer(team_app, name="team")
+
+
+@team_app.command("init")
+def team_init(name: str = typer.Argument(..., help="Team identifier (free-form slug).")):
+    """Tag all future memory writes with a team_id.
+
+    Current implementation is local-only: you share the forgent.db file across
+    the team. Real authenticated multi-team RBAC requires a backend server
+    and is on the ROADMAP. Until then, treat team_id as a soft scope tag.
+    """
+    cfg = ForgentConfig.load()
+    cfg.set_team_id(name)
+    console.print(f"[success]team set to[/success] [accent]{name}[/accent]")
+    console.print("[muted]New memory writes will carry team_id='" + name + "'[/muted]")
+
+
+@team_app.command("clear")
+def team_clear():
+    """Unset the team_id."""
+    cfg = ForgentConfig.load()
+    cfg.set_team_id(None)
+    console.print("[success]team cleared[/success]")
+
+
+eval_app = typer.Typer(help="Plan-quality evaluations (v0.4 local scaffold).")
+app.add_typer(eval_app, name="eval")
+
+
+@eval_app.command("list")
+def eval_list():
+    """List bundled benchmarks."""
+    console.print(
+        Panel(
+            "[label]swe-bench-lite[/label] [muted]-- 300-task subset of SWE-bench; compares forgent plans to known-good diffs[/muted]\n\n"
+            "[muted]Full benchmarks require cloning the datasets. Public leaderboard is on the ROADMAP.[/muted]",
+            title="[title]forgent evals[/title]",
+            border_style=COLORS.border,
+        )
+    )
+
+
+@eval_app.command("run")
+def eval_run(
+    benchmark: str = typer.Argument("swe-bench-lite"),
+    limit: int = typer.Option(10, "--limit", help="How many tasks to run."),
+):
+    """Run a benchmark locally. Scaffold: prints what WILL run and exits.
+
+    The full runner clones the benchmark dataset, iterates tasks, calls
+    `forgent advise` on each, and writes a JSON report. That's a bigger
+    lift than fits in v0.4 -- this stub validates the plumbing.
+    """
+    console.print(
+        Panel(
+            f"[label]benchmark[/label]  [accent]{benchmark}[/accent]\n"
+            f"[label]tasks[/label]      [secondary]{limit}[/secondary]\n\n"
+            "[warning]scaffold only -- dataset-loading runner arrives in a follow-up.[/warning]\n"
+            "[muted]See ROADMAP.md for the full spec.[/muted]",
+            title="[title]eval run[/title]",
+            border_style=COLORS.accent,
         )
     )
 

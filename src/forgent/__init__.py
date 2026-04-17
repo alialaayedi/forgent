@@ -14,7 +14,7 @@ from forgent.registry.forge import AgentForge, ForgedAgent
 from forgent.registry.loader import AgentSpec, Registry
 from forgent.router.router import Router, RoutingDecision
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "Orchestrator",
     "Planner",

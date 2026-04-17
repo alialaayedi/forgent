@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     task        TEXT NOT NULL,
     created_at  REAL NOT NULL,
     status      TEXT NOT NULL DEFAULT 'open',
-    metadata    TEXT
+    metadata    TEXT,
+    team_id     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS memories (
@@ -79,6 +80,8 @@ CREATE TABLE IF NOT EXISTS memories (
     tags        TEXT NOT NULL DEFAULT '',
     source      TEXT,
     created_at  REAL NOT NULL,
+    embedding   BLOB,
+    team_id     TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 
@@ -128,7 +131,28 @@ class MemoryStore:
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Backward-compat column additions for existing DBs.
+
+        sqlite3 won't 'ADD COLUMN IF NOT EXISTS' pre-3.35, so we introspect
+        PRAGMA table_info and add missing columns idempotently. Safe on both
+        fresh DBs (no-op, CREATE TABLE already has them) and v0.3 DBs.
+        """
+        def _col_names(table: str) -> set[str]:
+            rows = self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            return {r["name"] for r in rows}
+
+        mem_cols = _col_names("memories")
+        if "embedding" not in mem_cols:
+            self._conn.execute("ALTER TABLE memories ADD COLUMN embedding BLOB")
+        if "team_id" not in mem_cols:
+            self._conn.execute("ALTER TABLE memories ADD COLUMN team_id TEXT")
+        sess_cols = _col_names("sessions")
+        if "team_id" not in sess_cols:
+            self._conn.execute("ALTER TABLE sessions ADD COLUMN team_id TEXT")
 
     # ----- session lifecycle ------------------------------------------------
 
@@ -159,7 +183,13 @@ class MemoryStore:
         tags: Iterable[str] | None = None,
         source: str | None = None,
     ) -> MemoryEntry:
-        """Persist a single piece of context. Always returns the stored entry."""
+        """Persist a single piece of context. Always returns the stored entry.
+
+        If FORGENT_EMBED_MODEL is set and a provider is reachable, the
+        content is also embedded and stored in the `embedding` column for
+        later semantic recall. Failures are silent -- memory writes must
+        never fail because of a transient embedding API issue.
+        """
         entry = MemoryEntry(
             id=str(uuid.uuid4()),
             session_id=session_id,
@@ -168,9 +198,25 @@ class MemoryStore:
             tags=list(tags or []),
             source=source,
         )
+        embedding_blob: bytes | None = None
+        try:
+            from forgent.embeddings import embed, pack_vector
+            vec = embed(content)
+            if vec:
+                embedding_blob = pack_vector(vec)
+        except Exception:
+            embedding_blob = None
+
+        team_id_val: str | None = None
+        try:
+            from forgent.config import ForgentConfig
+            team_id_val = ForgentConfig.load().team_id()
+        except Exception:
+            team_id_val = None
+
         self._conn.execute(
-            "INSERT INTO memories(id, session_id, type, content, tags, source, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO memories(id, session_id, type, content, tags, source, "
+            "created_at, embedding, team_id) VALUES (?,?,?,?,?,?,?,?,?)",
             (
                 entry.id,
                 entry.session_id,
@@ -179,6 +225,8 @@ class MemoryStore:
                 " ".join(entry.tags),
                 entry.source,
                 entry.created_at,
+                embedding_blob,
+                team_id_val,
             ),
         )
         self._conn.commit()
@@ -246,16 +294,44 @@ class MemoryStore:
         limit: int = 5,
         type: MemoryType | None = None,
         session_id: str | None = None,
+        mode: str = "auto",
     ) -> list[MemoryEntry]:
-        """Keyword recall via FTS5, ranked by BM25.
+        """Keyword / semantic / hybrid recall.
 
-        FTS5 is forgiving about phrasing, but the query must be tokens — strip
-        punctuation that would otherwise be parsed as operators.
+        Modes:
+          - 'bm25'   FTS5 keyword ranking (the classic forgent behavior).
+          - 'semantic' cosine similarity over stored embeddings. Requires
+                     FORGENT_EMBED_MODEL set AND memories previously written
+                     with embeddings. Falls back to BM25 on any miss.
+          - 'hybrid' Reciprocal rank fusion of BM25 + semantic. Surfaces
+                     items that are either a strong keyword match OR a
+                     strong semantic neighbor -- catches both "grep"-style
+                     and "what did I do like this before?" queries.
+          - 'auto'   hybrid when embeddings are enabled, else bm25.
         """
+        if mode == "auto":
+            try:
+                from forgent.embeddings import embeddings_enabled
+                mode = "hybrid" if embeddings_enabled() else "bm25"
+            except Exception:
+                mode = "bm25"
+        if mode == "semantic":
+            return self._recall_semantic(query, limit, type, session_id) \
+                or self._recall_bm25(query, limit, type, session_id)
+        if mode == "hybrid":
+            return self._recall_hybrid(query, limit, type, session_id)
+        return self._recall_bm25(query, limit, type, session_id)
+
+    def _recall_bm25(
+        self,
+        query: str,
+        limit: int,
+        type: MemoryType | None,
+        session_id: str | None,
+    ) -> list[MemoryEntry]:
         clean = _sanitize_fts_query(query)
         if not clean:
             return self._recent(limit=limit, type=type, session_id=session_id)
-
         sql = (
             "SELECT m.* FROM memories_fts f "
             "JOIN memories m ON m.rowid = f.rowid "
@@ -270,13 +346,81 @@ class MemoryStore:
             params.append(session_id)
         sql += "ORDER BY bm25(memories_fts) LIMIT ?"
         params.append(limit)
-
         try:
             rows = self._conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
-            # Bad FTS expression — fall back to recency
             return self._recent(limit=limit, type=type, session_id=session_id)
         return [_row_to_entry(r) for r in rows]
+
+    def _recall_semantic(
+        self,
+        query: str,
+        limit: int,
+        type: MemoryType | None,
+        session_id: str | None,
+    ) -> list[MemoryEntry]:
+        """Cosine-similarity ranking over the embedding column."""
+        try:
+            from forgent.embeddings import embed, unpack_vector, cosine_similarity
+        except Exception:
+            return []
+        q_vec = embed(query)
+        if not q_vec:
+            return []
+        sql = "SELECT * FROM memories WHERE embedding IS NOT NULL "
+        params: list[Any] = []
+        if type is not None:
+            sql += "AND type = ? "
+            params.append(type.value)
+        if session_id is not None:
+            sql += "AND session_id = ? "
+            params.append(session_id)
+        sql += "ORDER BY created_at DESC LIMIT 500"
+        rows = self._conn.execute(sql, params).fetchall()
+        scored: list[tuple[float, sqlite3.Row]] = []
+        for r in rows:
+            blob = r["embedding"]
+            if not blob:
+                continue
+            vec = unpack_vector(blob)
+            if not vec:
+                continue
+            score = cosine_similarity(q_vec, vec)
+            if score > 0.0:
+                scored.append((score, r))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return [_row_to_entry(r) for _, r in scored[:limit]]
+
+    def _recall_hybrid(
+        self,
+        query: str,
+        limit: int,
+        type: MemoryType | None,
+        session_id: str | None,
+    ) -> list[MemoryEntry]:
+        """Reciprocal rank fusion of BM25 + semantic.
+
+        RRF score = sum over sources of 1 / (k + rank), with k=60 per the
+        standard paper. Simple, parameter-light, and robust to scale
+        differences between the two scores (BM25 isn't bounded; cosine is).
+        """
+        k = 60
+        bm25_hits = self._recall_bm25(query, limit * 3, type, session_id)
+        sem_hits = self._recall_semantic(query, limit * 3, type, session_id)
+
+        ranks: dict[str, float] = {}
+        for i, r in enumerate(bm25_hits):
+            ranks[r.id] = ranks.get(r.id, 0.0) + 1.0 / (k + i + 1)
+        for i, r in enumerate(sem_hits):
+            ranks[r.id] = ranks.get(r.id, 0.0) + 1.0 / (k + i + 1)
+
+        # Map id -> entry, preferring semantic (it has fresher content).
+        by_id: dict[str, MemoryEntry] = {r.id: r for r in bm25_hits}
+        for r in sem_hits:
+            by_id.setdefault(r.id, r)
+
+        fused = sorted(ranks.items(), key=lambda kv: kv[1], reverse=True)
+        return [by_id[eid] for eid, _ in fused[:limit] if eid in by_id]
 
     def _recent(
         self,

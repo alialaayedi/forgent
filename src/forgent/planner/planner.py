@@ -79,6 +79,7 @@ class PlanCard:
     confidence: float = 0.0
     routing_reasoning: str = ""
     knowledge_pack_summary: str = ""
+    alternates: list[dict] = field(default_factory=list)  # top-3 runners-up
 
     # --- decomposition ---
     steps: list[str] = field(default_factory=list)
@@ -89,6 +90,15 @@ class PlanCard:
     memory_index: list[MemoryPath] = field(default_factory=list)
     recalled_memory: str = ""  # preview, not a dump
     past_outcomes: list[str] = field(default_factory=list)
+
+    # --- multi-agent plan graph ---
+    subplans: list["PlanCard"] = field(default_factory=list)  # DAG of child plans
+    handoff_contract: str = ""  # what the primary passes to each child
+
+    # --- budgeting & revision ---
+    version: int = 1                     # v2 / v3 after revise_plan
+    budget_ms: int | None = None         # honored by planner
+    budget_usd: float | None = None      # honored by planner
 
     # --- provenance ---
     forged: bool = False
@@ -153,6 +163,46 @@ class PlanCard:
         if self.success_criteria:
             sc_md = "\n".join(f"- {c}" for c in self.success_criteria)
             parts.append(f"## Success criteria\n\n{sc_md}")
+
+        if self.alternates:
+            # Collapse under a <details> because it's secondary info -- the
+            # user only reads it when they're curious WHY this pack was
+            # picked. Primary info (steps/gotchas) stays above the fold.
+            alts_md = "\n".join(
+                f"- **{a.get('name', '')}** ({int(a.get('score', 0) * 100)}%) -- "
+                f"{a.get('reasoning', '')}"
+                for a in self.alternates
+            )
+            parts.append(
+                "## Why this pack?\n\n"
+                f"**Picked:** `{self.primary_agent}` -- {self.routing_reasoning}\n\n"
+                "<details>\n<summary>Other candidates considered</summary>\n\n"
+                f"{alts_md}\n\n</details>"
+            )
+
+        if self.subplans:
+            # Multi-agent plan graph: render each child as a nested block.
+            # The handoff_contract explains what the parent hands off to the
+            # children -- the glue between plans.
+            handoff = (
+                f"\n**Handoff contract:** {self.handoff_contract}\n\n"
+                if self.handoff_contract else "\n"
+            )
+            blocks: list[str] = [
+                "## Sub-plans\n\n"
+                "This task spans multiple domains. Each sub-plan below is a "
+                "self-contained PlanCard for one supporting specialist. Execute "
+                "them in the order the primary plan specifies."
+                + handoff
+            ]
+            for idx, sub in enumerate(self.subplans, 1):
+                sub_md = sub.to_markdown()
+                blocks.append(
+                    f"<details>\n<summary>{idx}. `{sub.primary_agent}` -- "
+                    f"{sub.knowledge_pack_summary[:120]}</summary>\n\n"
+                    f"{sub_md}\n\n</details>"
+                )
+            parts.append("\n\n".join(blocks))
 
         if self.past_outcomes:
             outcomes_md = "\n".join(f"- {o}" for o in self.past_outcomes)
@@ -242,15 +292,37 @@ class Planner:
         past_outcomes: "list[MemoryEntry] | None" = None,
         memory_index: "list[MemoryPath] | None" = None,
         forged: bool = False,
+        budget_ms: int | None = None,
+        budget_usd: float | None = None,
+        _recursion_depth: int = 0,
     ) -> PlanCard:
-        """Build a PlanCard. Tries LLM first, falls back to heuristic on any failure."""
+        """Build a PlanCard. Tries LLM first, falls back to heuristic on any failure.
+
+        When the routing decision picks `mode in (sequential, parallel,
+        evaluator-optimizer)`, the planner recursively builds a sub-PlanCard
+        per supporting agent (DAG depth capped at _MAX_SUBPLAN_DEPTH). This is
+        the v0.4 multi-agent plan graph -- a direct answer to Claude Flow /
+        BMAD's multi-agent teams.
+
+        Budgets:
+          - budget_ms: if set AND the LLM call would likely exceed it
+            (rough estimate based on token count + model latency), fall back
+            to heuristic mode for this plan and don't recurse.
+          - budget_usd: if set AND the planner model would cost more than
+            this, downshift to heuristic.
+        """
         outcomes_summaries = self._summarize_outcomes(past_outcomes or [])
         index = list(memory_index or [])
         recall_preview = _preview_recall(recalled_memory)
 
-        if self._client is not None:
+        # Budget check: tight latency/cost -> skip the LLM path.
+        use_heuristic = self._client is None or _budget_too_tight(
+            budget_ms, budget_usd, self.model
+        )
+
+        if not use_heuristic:
             try:
-                return self._llm_plan(
+                card = self._llm_plan(
                     task=task,
                     session_id=session_id,
                     decision=decision,
@@ -260,10 +332,26 @@ class Planner:
                     memory_index=index,
                     forged=forged,
                 )
+                card.budget_ms = budget_ms
+                card.budget_usd = budget_usd
+                if _recursion_depth < _MAX_SUBPLAN_DEPTH and decision.mode != "single":
+                    card.subplans = self._recurse_subplans(
+                        task=task,
+                        decision=decision,
+                        session_id=session_id,
+                        recalled_memory=recall_preview,
+                        past_outcomes=outcomes_summaries,
+                        memory_index=index,
+                        budget_ms=_halve(budget_ms),
+                        budget_usd=_halve(budget_usd),
+                        depth=_recursion_depth + 1,
+                    )
+                    card.handoff_contract = _handoff_contract(agent, decision)
+                return card
             except Exception:
                 pass  # fall through to heuristic
 
-        return self._heuristic_plan(
+        card = self._heuristic_plan(
             task=task,
             session_id=session_id,
             decision=decision,
@@ -273,6 +361,53 @@ class Planner:
             memory_index=index,
             forged=forged,
         )
+        card.budget_ms = budget_ms
+        card.budget_usd = budget_usd
+        return card
+
+    def _recurse_subplans(
+        self,
+        task: str,
+        decision: "RoutingDecision",
+        session_id: str,
+        recalled_memory: str,
+        past_outcomes: list[str],
+        memory_index: list[MemoryPath],
+        budget_ms: int | None,
+        budget_usd: float | None,
+        depth: int,
+    ) -> list[PlanCard]:
+        """Generate one sub-PlanCard per supporting agent."""
+        out: list[PlanCard] = []
+        for name in decision.supporting:
+            sub_agent = self.registry.get(name)
+            if sub_agent is None:
+                continue
+            # Build a narrower routing decision for the child.
+            from forgent.router.router import RoutingDecision as _RD
+            child_decision = _RD(
+                primary=name,
+                supporting=[],
+                mode="single",
+                reasoning=f"Sub-plan for {name}, spawned by {decision.primary}",
+                confidence=decision.confidence,
+                alternates=[],
+            )
+            child = self.plan(
+                task=f"[sub-plan of '{task[:80]}'] {sub_agent.description}",
+                session_id=session_id,
+                decision=child_decision,
+                agent=sub_agent,
+                recalled_memory=recalled_memory,
+                past_outcomes=[],  # already surfaced on the parent
+                memory_index=[],   # parent already has the index
+                forged=False,
+                budget_ms=budget_ms,
+                budget_usd=budget_usd,
+                _recursion_depth=depth,
+            )
+            out.append(child)
+        return out
 
     # ------------------------------------------------------------------
     # LLM path
@@ -383,6 +518,7 @@ class Planner:
                     supporting=list(decision.supporting),
                     confidence=decision.confidence,
                     routing_reasoning=decision.reasoning,
+                    alternates=[a.to_dict() for a in decision.alternates],
                     knowledge_pack_summary=str(payload.get("knowledge_pack_summary", "")).strip(),
                     steps=[str(s) for s in payload.get("steps", []) if s][:8],
                     gotchas=[str(g) for g in payload.get("gotchas", []) if g][:8],
@@ -448,6 +584,7 @@ class Planner:
             supporting=list(decision.supporting),
             confidence=decision.confidence,
             routing_reasoning=decision.reasoning,
+            alternates=[a.to_dict() for a in decision.alternates],
             knowledge_pack_summary=summary,
             steps=steps,
             gotchas=gotchas,
@@ -476,3 +613,69 @@ def _preview_recall(recalled: str) -> str:
     if len(recalled) <= _RECALL_PREVIEW_CHARS:
         return recalled
     return recalled[: _RECALL_PREVIEW_CHARS - 3].rstrip() + "..."
+
+
+# --------------------------------------------------------------------------- budgets
+
+# Recursion cap on subplans. A DAG deeper than this rarely helps and burns
+# tokens fast.
+_MAX_SUBPLAN_DEPTH = 1  # parent + one layer of children
+
+# Rough latency estimates (seconds) for each planner model's tool-use call
+# at typical token counts. Used only when the caller passes budget_ms.
+_MODEL_LATENCY_MS: dict[str, int] = {
+    "claude-opus-4-7": 12_000,
+    "claude-opus-4-6": 12_000,
+    "claude-sonnet-4-6": 6_000,
+    "claude-haiku-4-5-20251001": 2_500,
+    "claude-haiku-4-5": 2_500,
+}
+
+# Rough cost estimates in USD for a single planner call at ~4k input / 2k output.
+_MODEL_COST_USD: dict[str, float] = {
+    "claude-opus-4-7": 0.08,
+    "claude-opus-4-6": 0.08,
+    "claude-sonnet-4-6": 0.035,
+    "claude-haiku-4-5-20251001": 0.008,
+    "claude-haiku-4-5": 0.008,
+}
+
+
+def _budget_too_tight(budget_ms: int | None, budget_usd: float | None, model: str) -> bool:
+    """True when the LLM planner would likely miss the caller's budget."""
+    if budget_ms is not None and budget_ms < _MODEL_LATENCY_MS.get(model, 10_000):
+        return True
+    if budget_usd is not None and budget_usd < _MODEL_COST_USD.get(model, 0.08):
+        return True
+    return False
+
+
+def _halve(x):
+    """Half the remaining budget for the child. Prevents run-away recursion."""
+    if x is None:
+        return None
+    return type(x)(x / 2)
+
+
+def _handoff_contract(agent, decision) -> str:
+    """Short sentence describing what the primary hands off to each child."""
+    if not decision.supporting:
+        return ""
+    mode = decision.mode
+    if mode == "sequential":
+        return (
+            f"Primary `{agent.name}` completes its plan, then hands off to "
+            f"{' -> '.join(decision.supporting)} in order. Each child receives "
+            "the primary's output as prior context."
+        )
+    if mode == "parallel":
+        return (
+            f"Primary `{agent.name}` and {', '.join(decision.supporting)} run "
+            "in parallel on the same task. Merge their outputs before reporting."
+        )
+    if mode == "evaluator-optimizer":
+        return (
+            f"Primary `{agent.name}` drafts; {decision.supporting[0] if decision.supporting else '(none)'} "
+            "critiques and the primary revises until the critique passes."
+        )
+    return ""

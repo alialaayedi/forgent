@@ -52,6 +52,8 @@ class Orchestrator:
         task: str,
         metadata: dict[str, Any] | None = None,
         auto_forge: bool = True,
+        budget_ms: int | None = None,
+        budget_usd: float | None = None,
     ) -> PlanCard:
         """Route, recall, plan. Returns a PlanCard the host LLM will execute."""
         sid = self.memory.start_session(task, metadata=metadata)
@@ -117,6 +119,8 @@ class Orchestrator:
             past_outcomes=past_outcomes,
             memory_index=memory_index,
             forged=forged,
+            budget_ms=budget_ms,
+            budget_usd=budget_usd,
         )
 
         # 8. Persist the routing decision and the plan itself.
@@ -146,8 +150,104 @@ class Orchestrator:
         task: str,
         metadata: dict[str, Any] | None = None,
         auto_forge: bool = True,
+        budget_ms: int | None = None,
+        budget_usd: float | None = None,
     ) -> PlanCard:
-        return asyncio.run(self.advise_async(task, metadata, auto_forge=auto_forge))
+        return asyncio.run(
+            self.advise_async(
+                task,
+                metadata,
+                auto_forge=auto_forge,
+                budget_ms=budget_ms,
+                budget_usd=budget_usd,
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Replan on deviation
+    # ------------------------------------------------------------------
+
+    async def revise_async(
+        self,
+        session_id: str,
+        reason: str,
+        completed_steps: list[str] | None = None,
+    ) -> PlanCard:
+        """Produce a v2 PlanCard for the same session given what was tried.
+
+        Mirrors Cline/Roo Code's re-plan-on-deviation. The original plan is
+        preserved; the revision is appended. `completed_steps` tells the
+        planner what NOT to re-suggest.
+        """
+        from forgent.memory import MemoryType
+
+        # Find the prior plan entry for this session to extract the task + agent.
+        rows = self.memory._conn.execute(  # noqa: SLF001
+            "SELECT task FROM sessions WHERE id=?", (session_id,),
+        ).fetchall()
+        if not rows:
+            raise ValueError(f"No session {session_id!r} in memory")
+        task = rows[0]["task"]
+
+        # Prior PlanCard summaries are recorded as MemoryType.PLAN. Count
+        # them so the new one is tagged v<N+1>.
+        prior_rows = self.memory._conn.execute(  # noqa: SLF001
+            "SELECT COUNT(*) AS n FROM memories WHERE type=? AND session_id=?",
+            (MemoryType.PLAN.value, session_id),
+        ).fetchone()
+        version = int(prior_rows["n"] if prior_rows else 0) + 1
+
+        # Compose a richer task string for the planner describing why we're
+        # re-planning. Keeps the underlying intent the same.
+        completed_block = ""
+        if completed_steps:
+            completed_block = (
+                "\n\n[Already attempted steps -- do NOT repeat these:]\n"
+                + "\n".join(f"- {s}" for s in completed_steps)
+            )
+        augmented_task = (
+            f"{task}\n\n"
+            f"[Replanning reason]: {reason}{completed_block}\n\n"
+            f"Produce a v{version} plan that takes the above into account."
+        )
+
+        # Recall + route fresh (may pick a different agent now that we have
+        # more context about what doesn't work).
+        recalled = self.memory.context_for(augmented_task)
+        decision = self.router.route(augmented_task)
+        agent = self.registry.get(decision.primary)
+        if agent is None:
+            raise RuntimeError(
+                f"Router picked {decision.primary!r} but it's not in the registry."
+            )
+        past_outcomes = self.memory.recent_outcomes(agent_name=agent.name, limit=6)
+        memory_index = self._build_memory_index(agent_name=agent.name)
+
+        plan = self.planner.plan(
+            task=augmented_task,
+            session_id=session_id,
+            decision=decision,
+            agent=agent,
+            recalled_memory=recalled,
+            past_outcomes=past_outcomes,
+            memory_index=memory_index,
+            forged=False,
+        )
+        plan.task = task  # restore the original task text for display
+        plan.version = version
+
+        self.memory.remember(
+            f"Revision v{version} of session {session_id[:8]} via "
+            f"{decision.primary}. Reason: {reason}",
+            MemoryType.PLAN,
+            session_id=session_id,
+            source=decision.primary,
+            tags=[decision.primary, "plan", f"v{version}", "revision"],
+        )
+        return plan
+
+    def revise(self, session_id: str, reason: str, completed_steps: list[str] | None = None) -> PlanCard:
+        return asyncio.run(self.revise_async(session_id, reason, completed_steps))
 
     # ------------------------------------------------------------------
     # Outcome reporting -- closes the feedback loop.

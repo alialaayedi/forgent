@@ -90,6 +90,89 @@ class ForgentConfig:
         data["statusline_prompted"] = True
         self._write(data)
 
+    # -------------------------------------------------------------- statusline appearance
+
+    def render_mode(self) -> str:
+        """Which status-line render mode to use.
+
+        One of 'auto', 'minimal', 'powerline', 'capsule', 'compact'.
+        'auto' (default) picks powerline on Nerd-Font terminals, else minimal.
+        """
+        return str(self._read().get("render_mode") or "auto")
+
+    def set_render_mode(self, mode: str) -> None:
+        if mode not in ("auto", "minimal", "powerline", "capsule", "compact"):
+            raise ValueError(f"unknown render mode {mode!r}")
+        data = self._read()
+        data["render_mode"] = mode
+        self._write(data)
+
+    def theme_name(self) -> str:
+        return str(self._read().get("theme") or "dark")
+
+    def set_theme(self, name: str) -> None:
+        data = self._read()
+        data["theme"] = name
+        self._write(data)
+
+    def segment_toggles(self) -> dict[str, bool]:
+        """Per-segment on/off flags. Unset segments default to True."""
+        val = self._read().get("segment_toggles") or {}
+        return {k: bool(v) for k, v in val.items()} if isinstance(val, dict) else {}
+
+    def set_segment(self, name: str, enabled: bool) -> None:
+        data = self._read()
+        toggles = data.get("segment_toggles") or {}
+        if not isinstance(toggles, dict):
+            toggles = {}
+        toggles[name] = bool(enabled)
+        data["segment_toggles"] = toggles
+        self._write(data)
+
+    # -------------------------------------------------------------- auto-compact
+
+    def autocompact_pct(self) -> int | None:
+        """The forgent-managed auto-compact threshold percent. None if unset."""
+        val = self._read().get("autocompact_pct")
+        if isinstance(val, int) and 1 <= val <= 99:
+            return val
+        return None
+
+    def set_autocompact_pct(self, pct: int) -> None:
+        if not isinstance(pct, int) or not (1 <= pct <= 99):
+            raise ValueError("autocompact pct must be an int in 1..99")
+        data = self._read()
+        data["autocompact_pct"] = pct
+        self._write(data)
+
+    # -------------------------------------------------------------- team memory
+
+    def team_id(self) -> str | None:
+        val = self._read().get("team_id")
+        return val if isinstance(val, str) and val else None
+
+    def set_team_id(self, team_id: str | None) -> None:
+        data = self._read()
+        if team_id is None:
+            data.pop("team_id", None)
+        else:
+            data["team_id"] = str(team_id)
+        self._write(data)
+
+    # -------------------------------------------------------------- budgets
+
+    def default_budget_ms(self) -> int | None:
+        val = self._read().get("default_budget_ms")
+        return val if isinstance(val, int) and val > 0 else None
+
+    def set_default_budget_ms(self, ms: int | None) -> None:
+        data = self._read()
+        if ms is None:
+            data.pop("default_budget_ms", None)
+        else:
+            data["default_budget_ms"] = int(ms)
+        self._write(data)
+
     # -------------------------------------------------------------- generic
 
     def get(self, key: str, default: Any = None) -> Any:

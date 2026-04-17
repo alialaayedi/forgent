@@ -29,12 +29,31 @@ ROUTER_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
 
 
 @dataclass
+class RoutingAlternate:
+    """One candidate from the router's top-K shortlist.
+
+    Surfaced in the PlanCard's 'Why this pack?' section so users can see WHY
+    forgent picked the primary agent over the runners-up. Addresses the
+    transparency gap identified in the v0.4 competitive analysis -- Task
+    Master AI, Cline, and others hide their routing logic.
+    """
+
+    name: str
+    score: float                        # 0..1, higher = better fit
+    reasoning: str = ""
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "score": self.score, "reasoning": self.reasoning}
+
+
+@dataclass
 class RoutingDecision:
     primary: str                                  # agent name
     supporting: list[str] = field(default_factory=list)
     mode: str = "single"                          # single | sequential | parallel | evaluator-optimizer
     reasoning: str = ""
     confidence: float = 0.0
+    alternates: list[RoutingAlternate] = field(default_factory=list)  # top-3 runners-up
 
     def to_dict(self) -> dict:
         return {
@@ -43,6 +62,7 @@ class RoutingDecision:
             "mode": self.mode,
             "reasoning": self.reasoning,
             "confidence": self.confidence,
+            "alternates": [a.to_dict() for a in self.alternates],
         }
 
 
@@ -133,6 +153,20 @@ class Router:
                     },
                     "reasoning": {"type": "string", "description": "Why you picked these agents"},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "alternates": {
+                        "type": "array",
+                        "maxItems": 3,
+                        "description": "Top-3 runners-up (other strong candidates you considered but didn't pick as primary). Surface your decision process to the user.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "score": {"type": "number", "minimum": 0, "maximum": 1, "description": "How good a fit this would have been, 0-1"},
+                                "reasoning": {"type": "string", "description": "One-line tradeoff vs the primary"},
+                            },
+                            "required": ["name", "score", "reasoning"],
+                        },
+                    },
                 },
                 "required": ["primary", "mode", "reasoning", "confidence"],
             },
@@ -155,12 +189,28 @@ class Router:
                     fallback = self._heuristic_route(task)
                     fallback.reasoning = f"LLM chose unknown agent '{primary}'; fell back. Original reasoning: {payload.get('reasoning', '')}"
                     return fallback
+                alternates_payload = payload.get("alternates") or []
+                alternates: list[RoutingAlternate] = []
+                for a in alternates_payload[:3]:
+                    if not isinstance(a, dict):
+                        continue
+                    name = a.get("name", "")
+                    if not self.registry.get(name):
+                        continue  # drop hallucinated names
+                    alternates.append(
+                        RoutingAlternate(
+                            name=name,
+                            score=float(a.get("score", 0.5)),
+                            reasoning=str(a.get("reasoning", "")),
+                        )
+                    )
                 return RoutingDecision(
                     primary=primary,
                     supporting=[s for s in payload.get("supporting", []) if self.registry.get(s)],
                     mode=payload.get("mode", "single"),
                     reasoning=payload.get("reasoning", ""),
                     confidence=float(payload.get("confidence", 0.5)),
+                    alternates=alternates,
                 )
         raise RuntimeError("Router LLM did not return a tool_use block")
 
@@ -169,7 +219,7 @@ class Router:
     # ------------------------------------------------------------------
 
     def _heuristic_route(self, task: str) -> RoutingDecision:
-        ranked = self.registry.search(task, limit=4)
+        ranked = self.registry.search(task, limit=6)
         if not ranked:
             # Last resort — pick a generalist
             generalist = (
@@ -185,12 +235,23 @@ class Router:
             )
         primary = ranked[0]
         supporting = [a.name for a in ranked[1:3]]
+        # Top-3 alternates (positions 2-4, excluding the primary itself).
+        max_score = max(a.matches(task) for a in ranked) or 1
+        alternates = [
+            RoutingAlternate(
+                name=a.name,
+                score=round(a.matches(task) / max_score, 3),
+                reasoning=f"Matches capabilities: {', '.join(a.capabilities[:3])}",
+            )
+            for a in ranked[1:4]
+        ]
         return RoutingDecision(
             primary=primary.name,
             supporting=supporting,
             mode="single" if not supporting else "parallel",
             reasoning=f"Heuristic match on capabilities: {', '.join(primary.capabilities[:3])}",
             confidence=0.5,
+            alternates=alternates,
         )
 
     # ------------------------------------------------------------------
