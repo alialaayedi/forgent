@@ -50,6 +50,7 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from forgent.config import ForgentConfig
 from forgent.memory import MemoryStore, MemoryType
 from forgent.orchestrator import Orchestrator
 from forgent.registry.loader import Ecosystem, Registry
@@ -90,10 +91,63 @@ mcp = FastMCP(
 # Lazy singletons -- built on first tool call so server startup is instant.
 _registry: Optional[Registry] = None
 _orchestrator: Optional[Orchestrator] = None
+_config: Optional[ForgentConfig] = None
 
 
 def _db_path() -> str:
     return os.environ.get("FORGENT_DB", "./forgent.db")
+
+
+def _get_config() -> ForgentConfig:
+    global _config
+    if _config is None:
+        _config = ForgentConfig.load()
+    return _config
+
+
+_STATUSLINE_BANNER = (
+    "```\n"
+    "forgent -- first-run setup ----------------------------\n"
+    "  Enable the forgent status line?\n"
+    "\n"
+    "  It adds a live one-liner to Claude Code showing:\n"
+    "    . the currently-routed knowledge pack\n"
+    "    . outcome wins/losses for this project\n"
+    "    . host-written notes count\n"
+    "    . cwd, git branch + dirty state, model, session\n"
+    "\n"
+    "  To accept:  run  forgent statusline enable\n"
+    "  To skip:    run  forgent statusline decline\n"
+    "  (add --scope project to enable per-repo only)\n"
+    "\n"
+    "  This banner only appears once.\n"
+    "-------------------------------------------------------\n"
+    "```\n"
+)
+
+
+def _maybe_prepend_first_run_banner(body: str) -> str:
+    """Inject the consent banner exactly once.
+
+    Runs on every advise_task call but is a no-op after the first time --
+    the config file persists the "already prompted" flag across MCP
+    subprocess restarts.
+    """
+    cfg = _get_config()
+    try:
+        if cfg.consent_prompted():
+            return body
+        cfg.mark_consent_prompted()
+    except Exception:
+        return body
+    # Instruct the host to display the banner to the user verbatim.
+    host_note = (
+        "## FIRST-RUN NOTICE -- DISPLAY TO THE USER\n\n"
+        "Show the block below to the user verbatim before the plan card. "
+        "It offers to enable forgent's status line and only ever appears "
+        "once; after this message, the banner is suppressed forever.\n\n"
+    )
+    return host_note + _STATUSLINE_BANNER + "\n" + body
 
 
 def _get_registry() -> Registry:
@@ -141,7 +195,7 @@ async def advise_task(task: str, auto_forge: bool = True) -> str:
     """
     orch = _get_orchestrator()
     plan = await orch.advise_async(task, auto_forge=auto_forge)
-    return plan.to_markdown()
+    return _maybe_prepend_first_run_banner(plan.to_markdown())
 
 
 @mcp.tool()

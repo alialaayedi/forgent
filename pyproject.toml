@@ -74,6 +74,7 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 [project.scripts]
 forgent = "forgent.cli:app"
 forgent-mcp = "forgent.mcp_server:main"
+forgent-statusline = "forgent.statusline:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

@@ -24,8 +24,10 @@ from dotenv import load_dotenv
 from rich.panel import Panel
 from rich.table import Table
 
+from forgent.config import ForgentConfig
 from forgent.memory import MemoryStore, MemoryType
 from forgent.orchestrator import Orchestrator
+from forgent import statusline as statusline_mod
 from forgent.registry.loader import Registry, Ecosystem
 from forgent.theme import COLORS, console
 
@@ -34,8 +36,10 @@ load_dotenv()
 app = typer.Typer(help="forgent — grow your own AI subagents on demand. Routes any task to the best curated agent across Claude Code subagents, Python frameworks, and MCP servers.")
 agents_app = typer.Typer(help="Inspect the curated agent registry.")
 memory_app = typer.Typer(help="Inspect and query the memory store.")
+statusline_app = typer.Typer(help="Manage the optional forgent status line for Claude Code.")
 app.add_typer(agents_app, name="agents")
 app.add_typer(memory_app, name="memory")
+app.add_typer(statusline_app, name="statusline")
 
 
 def _db_path() -> str:
@@ -330,6 +334,88 @@ def stats():
     for k, v in mem.stats().items():
         table.add_row(f"memory: {k}", str(v))
     console.print(table)
+
+
+@statusline_app.command("enable")
+def statusline_enable(
+    scope: str = typer.Option("user", "--scope", help="Where to install: 'user' (~/.claude) or 'project' (./.claude)."),
+):
+    """Enable the forgent status line and wire it into Claude Code settings."""
+    if scope not in ("user", "project"):
+        console.print("[error]scope must be 'user' or 'project'[/error]")
+        raise typer.Exit(2)
+    path = statusline_mod.install(scope=scope)
+    cfg = ForgentConfig.load()
+    cfg.record_statusline_choice("accepted")
+    console.print(
+        Panel(
+            f"[success]enabled[/success] [muted]({scope} scope)[/muted]\n"
+            f"[label]settings.json[/label]  [secondary]{path}[/secondary]\n"
+            f"[label]command[/label]        [secondary]forgent-statusline[/secondary]\n\n"
+            "[muted]Restart Claude Code to see the new status line.[/muted]",
+            title="[title]forgent status line[/title]",
+            border_style=COLORS.border_strong,
+        )
+    )
+
+
+@statusline_app.command("decline")
+def statusline_decline():
+    """Record that the status line should NOT be enabled. The first-run banner will never show again."""
+    cfg = ForgentConfig.load()
+    cfg.record_statusline_choice("declined")
+    console.print(
+        "[muted]ok -- forgent won't offer the status line again. "
+        "Run `forgent statusline enable` later if you change your mind.[/muted]"
+    )
+
+
+@statusline_app.command("disable")
+def statusline_disable(
+    scope: str = typer.Option("user", "--scope", help="Where to uninstall from: 'user' or 'project'."),
+):
+    """Remove the forgent status line from Claude Code settings (keeps consent choice)."""
+    if scope not in ("user", "project"):
+        console.print("[error]scope must be 'user' or 'project'[/error]")
+        raise typer.Exit(2)
+    changed = statusline_mod.uninstall(scope=scope)
+    if changed:
+        console.print(f"[success]removed forgent status line from {scope} settings[/success]")
+    else:
+        console.print(f"[muted]no forgent status line to remove in {scope} settings[/muted]")
+
+
+@statusline_app.command("show")
+def statusline_show():
+    """Render the status line locally (useful for previewing what Claude Code will show)."""
+    import os as _os
+    ctx = {
+        "cwd": _os.getcwd(),
+        "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"},
+    }
+    line = statusline_mod.render_line(ctx)
+    console.print(line)
+
+
+@statusline_app.command("status")
+def statusline_status():
+    """Report current consent + install state."""
+    cfg = ForgentConfig.load()
+    choice = cfg.statusline_choice() or "(not decided)"
+    prompted = "yes" if cfg.consent_prompted() else "no"
+    user_on = statusline_mod.is_installed("user")
+    project_on = statusline_mod.is_installed("project")
+    console.print(
+        Panel(
+            f"[label]consent[/label]          [secondary]{choice}[/secondary]\n"
+            f"[label]banner shown[/label]     [secondary]{prompted}[/secondary]\n"
+            f"[label]user scope[/label]       [secondary]{'installed' if user_on else 'not installed'}[/secondary]\n"
+            f"[label]project scope[/label]    [secondary]{'installed' if project_on else 'not installed'}[/secondary]\n"
+            f"[label]config file[/label]      [muted]{cfg.path}[/muted]",
+            title="[title]forgent status line[/title]",
+            border_style=COLORS.border,
+        )
+    )
 
 
 if __name__ == "__main__":
