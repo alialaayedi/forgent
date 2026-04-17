@@ -1,7 +1,7 @@
 [project]
 name = "forgent"
-version = "0.1.0"
-description = "Meta-orchestrator that grows its own AI subagents on demand. Routes any task across Claude Code subagents, Python frameworks, and MCP servers."
+version = "0.3.1"
+description = "Planning + knowledge layer for AI coding agents. Routes any task to the best of 60+ curated specialists, returns a structured PlanCard (steps, gotchas, success criteria) with progressive memory, and ships an optional Claude Code status line."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
