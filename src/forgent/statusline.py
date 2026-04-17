@@ -5,21 +5,26 @@ context Claude Code passes on stdin and emits one colored line on stdout.
 
 Layout (missing pieces are dropped, not replaced with placeholders):
 
-    forgent . <pack> . <wins> . <notes> . <forged>  |  <dir>@<branch><*> . <model> . <sid>
+    forgent > <pack> . <W/L> . <notes>  |  <path> <branch><*>  |  <bar> <pct>% ctx . <til compact>  |  <model> (<ctx>)
 
-    - pack      last routed knowledge pack (from forgent's project memory)
-    - wins      outcome ratio across all agents, color-graded
-    - notes     count of host-written breadcrumbs (/notes/*)
-    - forged    count of auto/manually forged specialists (marker of depth)
-    - dir       basename of cwd (or "~" if home)
-    - branch    current git branch
-    - *         present when the working tree is dirty
-    - model     the model id Claude Code is currently using
-    - sid       short session id from Claude Code (the *host* session,
-                not the forgent session — useful for correlating logs)
+Example:
 
-The forgent-specific half (pack/wins/notes/forged) is what makes this
-status line unique. The right-hand half is standard engineer context.
+    forgent > python-pro . 3W/1L . 2 notes  |  ~/Documents/tovo [b]main*  |  [====    ] 38% ctx . 54% til compact  |  Opus 4.7 (1M)
+
+Design choices (inspired by community status-line designs):
+  - Forgent signature and active pack are linked with ">" to read as a
+    single phrase: "forgent is guiding via python-pro".
+  - Groups are split by a thin vertical bar; fields within a group by a
+    middle dot. This makes the line easy to scan at a glance.
+  - Context usage gets an 8-cell visual bar in addition to %, so the
+    "how full" signal lands before you read the number.
+  - Model includes its context window size -- Opus 4.7 (1M) vs Haiku
+    4.5 (200k). Tells you at a glance whether you have headroom.
+
+The left two groups are forgent-unique (pack, outcome ratio, notes).
+The middle two are standard engineer context (path/branch, ctx bar).
+The right is model info. Missing pieces collapse so the line never
+fills with placeholders.
 
 Two public entry points:
 
@@ -87,12 +92,18 @@ def _colors_disabled() -> bool:
 
 # --------------------------------------------------------------------------- render
 
-def _sep() -> str:
-    return f" {_c('.', _GRAY, dim=True)} "
+def _dot() -> str:
+    return f" {_c('·', _GRAY, dim=True)} "
 
 
-def _divider() -> str:
-    return f"  {_c('|', _GRAY, dim=True)}  "
+def _bar_sep() -> str:
+    return f"  {_c('│', _GRAY, dim=True)}  "
+
+
+# Branch glyph. Unicode U+2387 (ALTERNATIVE KEY SYMBOL) is the de-facto git
+# branch icon used by starship/powerline/p10k. Renders on every terminal
+# font we care about.
+_BRANCH_GLYPH = "\u2387"
 
 
 def render_line(ctx: dict[str, Any] | None = None) -> str:
@@ -109,50 +120,52 @@ def _render(ctx: dict[str, Any]) -> str:
 
     # forgent-local pieces
     pack = _active_pack(cwd)
-    wins = _outcome_summary(cwd)
+    wins = _outcome_compact(cwd)
     notes = _notes_count(cwd)
     forged = _forged_count(cwd)
 
     # standard engineer context
-    dir_label = _dir_label(cwd)
+    path_label = _path_label(cwd)
     branch, dirty = _git_branch(cwd)
-    model = _model_label(ctx)
-    sid = _short_session(ctx)
+    model_label = _model_with_context(ctx)
     context_block = _context_label(ctx)
 
-    # -- left half: forgent-specific --
-    left: list[str] = [_c("forgent", _MAGENTA, bold=True)]
+    groups: list[str] = []
+
+    # -- group 1: forgent signature + active pack + outcome ratio --
+    forgent_chunk = _c("forgent", _MAGENTA, bold=True)
     if pack:
-        left.append(_c(pack, _YELLOW, bold=True))
+        arrow = _c("\u203a", _GRAY, dim=True)  # ›
+        forgent_chunk = f"{forgent_chunk} {arrow} {_c(pack, _YELLOW, bold=True)}"
+    pieces_a: list[str] = [forgent_chunk]
     if wins:
-        left.append(wins)
+        pieces_a.append(wins)
     if notes:
-        label = "note" if notes == 1 else "notes"
-        left.append(_c(f"{notes} {label}", _GRAY))
+        pieces_a.append(_c(f"{notes} {'note' if notes == 1 else 'notes'}", _GRAY))
     if forged:
-        left.append(_c(f"{forged} forged", _GRAY))
+        pieces_a.append(_c(f"{forged} forged", _GRAY))
+    groups.append(_dot().join(pieces_a))
 
-    # -- right half: repo / model context --
-    right: list[str] = []
+    # -- group 2: cwd + branch --
+    path_part = _c(path_label, _CYAN, bold=True)
     if branch:
-        project = _c(dir_label, _CYAN, bold=True)
-        branch_short = _truncate(branch, 22)
-        branch_part = _c(f"@{branch_short}", _CYAN)
+        glyph = _c(_BRANCH_GLYPH, _CYAN)
+        branch_short = _truncate(branch, 20)
+        branch_text = _c(branch_short, _CYAN)
         dirty_part = _c("*", _RED, bold=True) if dirty else ""
-        right.append(f"{project}{branch_part}{dirty_part}")
+        groups.append(f"{path_part}  {glyph} {branch_text}{dirty_part}")
     else:
-        right.append(_c(dir_label, _CYAN))
-    if model:
-        right.append(_c(model, _GRAY))
-    if context_block:
-        right.append(context_block)
-    if sid:
-        right.append(_c(sid, _GRAY, dim=True))
+        groups.append(path_part)
 
-    sep = _sep()
-    left_str = sep.join(left)
-    right_str = sep.join(right)
-    return f"{left_str}{_divider()}{right_str}"
+    # -- group 3: context usage (bar + pct + compact countdown) --
+    if context_block:
+        groups.append(context_block)
+
+    # -- group 4: model with context window size --
+    if model_label:
+        groups.append(_c(model_label, _GRAY))
+
+    return _bar_sep().join(groups)
 
 
 # --------------------------------------------------------------------------- pieces
@@ -199,8 +212,12 @@ def _active_pack(cwd: Path) -> str:
     return rows[0]["source"] if rows else ""
 
 
-def _outcome_summary(cwd: Path) -> str:
-    """Color-graded 'N/M wins' string. Empty when no outcomes yet."""
+def _outcome_compact(cwd: Path) -> str:
+    """Color-graded 'NW/ML' compact string. Empty when no outcomes yet.
+
+    Compact form reads faster at a glance than '3/4 wins'. Green when the
+    ratio is healthy, orange on the border, red when the agent is losing.
+    """
     store = _store_or_none(cwd)
     if store is None:
         return ""
@@ -212,6 +229,7 @@ def _outcome_summary(cwd: Path) -> str:
         return ""
     total = len(rows)
     wins = sum(1 for r in rows if "outcome=success" in (r["content"] or ""))
+    losses = total - wins
     ratio = wins / total if total else 0
     if ratio >= 0.75:
         color = _GREEN
@@ -219,7 +237,7 @@ def _outcome_summary(cwd: Path) -> str:
         color = _ORANGE
     else:
         color = _RED
-    return _c(f"{wins}/{total} wins", color, bold=True)
+    return _c(f"{wins}W/{losses}L", color, bold=True)
 
 
 def _notes_count(cwd: Path) -> int:
@@ -248,16 +266,30 @@ def _forged_count(cwd: Path) -> int:
         return 0
 
 
-def _dir_label(cwd: Path) -> str:
+def _path_label(cwd: Path, max_parts: int = 3) -> str:
+    """Shortened-but-contextual path. Replaces $HOME with '~' and trims depth.
+
+    Examples:
+        /Users/foo                            -> ~
+        /Users/foo/Documents/tovo             -> ~/Documents/tovo
+        /Users/foo/code/work/deep/nested/x    -> ~/.../deep/nested/x
+        /opt/shared/thing                     -> /opt/shared/thing (no home)
+    """
     home = Path.home()
     try:
         if cwd == home:
             return "~"
         rel = cwd.relative_to(home)
-        # Show just the basename for depth >= 1 (keeps line tight).
-        return rel.parts[-1] if rel.parts else cwd.name
+        parts = rel.parts
+        if len(parts) <= max_parts:
+            return "~/" + "/".join(parts)
+        return "~/.../" + "/".join(parts[-max_parts:])
     except ValueError:
-        return cwd.name or str(cwd)
+        # Not under home -- fall back to the last few segments.
+        parts = cwd.parts
+        if len(parts) <= max_parts + 1:  # +1 for the root
+            return str(cwd)
+        return ".../" + "/".join(parts[-max_parts:])
 
 
 def _git_branch(cwd: Path) -> tuple[str, bool]:
@@ -289,6 +321,7 @@ def _git_branch(cwd: Path) -> tuple[str, bool]:
 
 
 def _model_label(ctx: dict[str, Any]) -> str:
+    """Just the model display name, no context size."""
     model = ctx.get("model")
     if isinstance(model, dict):
         display = model.get("display_name") or model.get("id") or ""
@@ -296,6 +329,27 @@ def _model_label(ctx: dict[str, Any]) -> str:
     if isinstance(model, str):
         return model
     return ""
+
+
+def _model_with_context(ctx: dict[str, Any]) -> str:
+    """'Opus 4.7 (1M)' / 'Haiku 4.5 (200k)'. Falls back to just the name."""
+    name = _model_label(ctx)
+    if not name:
+        return ""
+    max_tokens = _model_context_tokens(ctx)
+    if not max_tokens:
+        return name
+    ctx_label = _humanize_context_window(max_tokens)
+    return f"{name} ({ctx_label})" if ctx_label else name
+
+
+def _humanize_context_window(n: int) -> str:
+    if n >= 1_000_000:
+        v = n / 1_000_000
+        return f"{v:.0f}M" if v.is_integer() else f"{v:.1f}M"
+    if n >= 1_000:
+        return f"{int(round(n / 1000))}k"
+    return str(n)
 
 
 def _short_session(ctx: dict[str, Any]) -> str:
@@ -332,7 +386,7 @@ _DEFAULT_COMPACT_PCT = 92
 
 
 def _context_label(ctx: dict[str, Any]) -> str:
-    """Render 'ctx 142k/1M . 14% . 78% til compact', color-graded.
+    """Render '[bar] NN% ctx . NN% til compact', color-graded.
 
     Returns '' when no usage data is available (no transcript yet, or on
     the very first prompt of a session). Never raises.
@@ -349,21 +403,39 @@ def _context_label(ctx: dict[str, Any]) -> str:
     # Color-grade by fullness.
     if pct >= threshold:
         color = _RED
+        bold = True
     elif pct >= threshold - 15:
         color = _ORANGE
+        bold = True
     else:
         color = _GRAY
+        bold = False
 
-    pct_label = f"{pct:.0f}%"
-    compact_label = (
-        "compact now" if pct >= threshold
-        else f"{til_compact}% til compact"
-    )
-    return _c(
-        f"ctx {pct_label} . {compact_label}",
-        color,
-        bold=(pct >= threshold - 15),
-    )
+    bar = _progress_bar(pct, color=color)
+    pct_label = _c(f"{pct:.0f}% ctx", color, bold=bold)
+    if pct >= threshold:
+        compact_label = _c("compact now", _RED, bold=True)
+    else:
+        compact_label = _c(f"{til_compact}% til compact", _GRAY, dim=True)
+    return f"{bar} {pct_label}{_dot()}{compact_label}"
+
+
+def _progress_bar(pct: float, *, cells: int = 8, color: str = _GRAY) -> str:
+    """Render a chunky ASCII/Unicode bar like '[====    ]'.
+
+    Uses heavy/light box-drawing characters so the bar reads crisply in
+    a monospace font. Colors just the filled portion; empty cells are
+    dim gray.
+    """
+    filled = max(0, min(cells, round(pct / 100 * cells)))
+    empty = cells - filled
+    # U+25B0 BLACK RIGHT-POINTING TRIANGLE? No -- use U+2588/U+2591 for
+    # classic block-shaded bars. Widely available; matches starship.
+    filled_char = "\u2588"  # █
+    empty_char = "\u2591"   # ░
+    filled_part = _c(filled_char * filled, color, bold=True) if filled else ""
+    empty_part = _c(empty_char * empty, _GRAY, dim=True) if empty else ""
+    return f"{filled_part}{empty_part}"
 
 
 def _model_context_tokens(ctx: dict[str, Any]) -> int:

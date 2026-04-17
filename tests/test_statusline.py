@@ -89,9 +89,9 @@ def test_render_line_populated_includes_pack_and_wins(monkeypatch, tmp_path):
         {"cwd": str(tmp_path), "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"}}
     )
     assert "python-pro" in line
-    assert "3/4 wins" in line
+    assert "3W/1L" in line  # compact wins/losses format
     assert "1 note" in line  # singular form
-    assert "Opus 4.7" in line
+    assert "Opus 4.7 (1M)" in line  # model with context window size
 
 
 def test_render_line_never_raises(monkeypatch, tmp_path):
