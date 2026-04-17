@@ -337,6 +337,337 @@ class MemoryStore:
         ).fetchall()
         return {r["type"]: r["n"] for r in rows}
 
+    # ----- virtual path layer -----------------------------------------------
+    #
+    # Exposes the memory store as a browsable filesystem so the host LLM can
+    # pull context on demand instead of receiving a dumped recall string. The
+    # paths are derived, not stored -- they map back to SQL filters on
+    # (type, source, tags). Shape inspired by Anthropic's memory_20250818
+    # tool protocol.
+    #
+    # Tree:
+    #   /                       -> root, lists top-level directories
+    #   /outcomes/              -> by agent (source field)
+    #   /outcomes/<agent>/      -> entries for that agent
+    #   /plans/<agent>/         -> plans produced for that agent
+    #   /notes/                 -> host-written breadcrumbs (tag "host-note")
+    #   /notes/<topic>/         -> scoped by first tag after "host-note"
+    #   /sessions/<sid>/        -> full timeline of a session
+    #   /agents/<name>          -> agent doc (rarely used at runtime)
+    #
+    # All reads are read-only and return shallow lists (no recursion).
+
+    def list_paths(self, path: str = "/") -> list[dict[str, Any]]:
+        """Return child entries at a virtual path.
+
+        Each entry is {path, kind, label, count}. kind is "dir" (more paths
+        below) or "leaf" (terminal entry). label is a short summary, count is
+        populated for directories.
+        """
+        p = _normalize_path(path)
+        if p == "/":
+            roots = [
+                ("outcomes", MemoryType.OUTCOME),
+                ("plans", MemoryType.PLAN),
+                ("notes", MemoryType.NOTE),
+                ("sessions", None),
+                ("agents", MemoryType.AGENT_DOC),
+            ]
+            out: list[dict[str, Any]] = []
+            for name, mtype in roots:
+                if name == "sessions":
+                    row = self._conn.execute(
+                        "SELECT COUNT(DISTINCT id) AS n FROM sessions"
+                    ).fetchone()
+                    count = row["n"] if row else 0
+                else:
+                    count = self._count_by_type(mtype)
+                if count > 0:
+                    out.append({
+                        "path": f"/{name}/",
+                        "kind": "dir",
+                        "label": f"{count} {name} entries",
+                        "count": count,
+                    })
+            return out
+
+        parts = [seg for seg in p.strip("/").split("/") if seg]
+        if not parts:
+            return []
+
+        head = parts[0]
+        tail = parts[1:]
+
+        if head == "outcomes":
+            return self._list_by_source(MemoryType.OUTCOME, "/outcomes", tail)
+        if head == "plans":
+            return self._list_by_source(MemoryType.PLAN, "/plans", tail)
+        if head == "notes":
+            return self._list_notes(tail)
+        if head == "sessions":
+            return self._list_sessions(tail)
+        if head == "agents":
+            return self._list_agents(tail)
+        return []
+
+    def view_path(self, path: str, limit: int = 20) -> list[MemoryEntry]:
+        """Read the memory entries at a path. Non-recursive.
+
+        For directory-like paths ('/outcomes/backbone/'), returns the most
+        recent `limit` entries under that scope. For leaf paths
+        ('/outcomes/backbone/<id>'), returns the single matching entry.
+        """
+        p = _normalize_path(path)
+        parts = [seg for seg in p.strip("/").split("/") if seg]
+        if not parts:
+            return []
+
+        head = parts[0]
+        tail = parts[1:]
+
+        if head == "outcomes":
+            return self._view_by_source(MemoryType.OUTCOME, tail, limit)
+        if head == "plans":
+            return self._view_by_source(MemoryType.PLAN, tail, limit)
+        if head == "notes":
+            return self._view_notes(tail, limit)
+        if head == "sessions":
+            return self._view_session(tail, limit)
+        if head == "agents":
+            return self._view_agents(tail, limit)
+        return []
+
+    def write_note(
+        self,
+        path: str,
+        content: str,
+        session_id: str | None = None,
+    ) -> MemoryEntry:
+        """Host-writable breadcrumb. Normalized under /notes/<topic>/<id>.
+
+        Rules:
+          - path must start with /notes/
+          - second segment is the topic (becomes a searchable tag)
+          - entry gets tagged ["host-note", topic]
+          - source is set to the full path for exact retrieval
+        """
+        p = _normalize_path(path)
+        if not p.startswith("/notes/"):
+            raise ValueError("write_note path must start with /notes/")
+        parts = [seg for seg in p.strip("/").split("/") if seg]
+        if len(parts) < 2:
+            raise ValueError(
+                "write_note path must be /notes/<topic> or /notes/<topic>/<subpath>"
+            )
+        topic = parts[1]
+        tags = ["host-note", topic]
+        return self.remember(
+            content=content,
+            type=MemoryType.NOTE,
+            session_id=session_id,
+            tags=tags,
+            source=p,
+        )
+
+    # ----- path layer internals ---------------------------------------------
+
+    def _count_by_type(self, mtype: MemoryType | None) -> int:
+        if mtype is None:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM memories"
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM memories WHERE type=?",
+                (mtype.value,),
+            ).fetchone()
+        return row["n"] if row else 0
+
+    def _list_by_source(
+        self, mtype: MemoryType, prefix: str, tail: list[str]
+    ) -> list[dict[str, Any]]:
+        """List /<type>/<source>/ or drill into one source."""
+        if not tail:
+            rows = self._conn.execute(
+                "SELECT source, COUNT(*) AS n FROM memories "
+                "WHERE type=? AND source IS NOT NULL AND source != '' "
+                "GROUP BY source ORDER BY MAX(created_at) DESC",
+                (mtype.value,),
+            ).fetchall()
+            return [
+                {
+                    "path": f"{prefix}/{r['source']}/",
+                    "kind": "dir",
+                    "label": f"{r['n']} entries for {r['source']}",
+                    "count": r["n"],
+                }
+                for r in rows
+                if r["source"]
+            ]
+        source = tail[0]
+        if len(tail) >= 2:
+            return []  # we only go one level deeper for now
+        rows = self._conn.execute(
+            "SELECT id, content, created_at FROM memories "
+            "WHERE type=? AND source=? ORDER BY created_at DESC LIMIT 20",
+            (mtype.value, source),
+        ).fetchall()
+        return [
+            {
+                "path": f"{prefix}/{source}/{r['id']}",
+                "kind": "leaf",
+                "label": _shorten(r["content"], 100),
+                "count": 1,
+            }
+            for r in rows
+        ]
+
+    def _view_by_source(
+        self, mtype: MemoryType, tail: list[str], limit: int
+    ) -> list[MemoryEntry]:
+        if not tail:
+            return self._recent(limit=limit, type=mtype)
+        source = tail[0]
+        if len(tail) == 1:
+            rows = self._conn.execute(
+                "SELECT * FROM memories WHERE type=? AND source=? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (mtype.value, source, limit),
+            ).fetchall()
+            return [_row_to_entry(r) for r in rows]
+        entry_id = tail[1]
+        rows = self._conn.execute(
+            "SELECT * FROM memories WHERE id=? AND type=?",
+            (entry_id, mtype.value),
+        ).fetchall()
+        return [_row_to_entry(r) for r in rows]
+
+    def _list_notes(self, tail: list[str]) -> list[dict[str, Any]]:
+        if not tail:
+            # Group host-notes by topic (second tag after "host-note").
+            rows = self._conn.execute(
+                "SELECT tags, COUNT(*) AS n FROM memories "
+                "WHERE type=? AND tags LIKE '%host-note%' "
+                "GROUP BY tags",
+                (MemoryType.NOTE.value,),
+            ).fetchall()
+            topic_counts: dict[str, int] = {}
+            for r in rows:
+                tag_tokens = (r["tags"] or "").split()
+                for t in tag_tokens:
+                    if t and t != "host-note":
+                        topic_counts[t] = topic_counts.get(t, 0) + r["n"]
+                        break
+            return [
+                {
+                    "path": f"/notes/{topic}/",
+                    "kind": "dir",
+                    "label": f"{count} notes tagged {topic}",
+                    "count": count,
+                }
+                for topic, count in sorted(
+                    topic_counts.items(), key=lambda kv: -kv[1]
+                )
+            ]
+        topic = tail[0]
+        if len(tail) >= 2:
+            return []
+        rows = self._conn.execute(
+            "SELECT id, content, created_at FROM memories "
+            "WHERE type=? AND tags LIKE ? ORDER BY created_at DESC LIMIT 20",
+            (MemoryType.NOTE.value, f"%{topic}%"),
+        ).fetchall()
+        return [
+            {
+                "path": f"/notes/{topic}/{r['id']}",
+                "kind": "leaf",
+                "label": _shorten(r["content"], 100),
+                "count": 1,
+            }
+            for r in rows
+        ]
+
+    def _view_notes(self, tail: list[str], limit: int) -> list[MemoryEntry]:
+        if not tail:
+            rows = self._conn.execute(
+                "SELECT * FROM memories WHERE type=? AND tags LIKE '%host-note%' "
+                "ORDER BY created_at DESC LIMIT ?",
+                (MemoryType.NOTE.value, limit),
+            ).fetchall()
+            return [_row_to_entry(r) for r in rows]
+        topic = tail[0]
+        if len(tail) == 1:
+            rows = self._conn.execute(
+                "SELECT * FROM memories WHERE type=? AND tags LIKE ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (MemoryType.NOTE.value, f"%{topic}%", limit),
+            ).fetchall()
+            return [_row_to_entry(r) for r in rows]
+        entry_id = tail[1]
+        rows = self._conn.execute(
+            "SELECT * FROM memories WHERE id=?", (entry_id,)
+        ).fetchall()
+        return [_row_to_entry(r) for r in rows]
+
+    def _list_sessions(self, tail: list[str]) -> list[dict[str, Any]]:
+        if not tail:
+            rows = self._conn.execute(
+                "SELECT id, task, status, created_at FROM sessions "
+                "ORDER BY created_at DESC LIMIT 25"
+            ).fetchall()
+            return [
+                {
+                    "path": f"/sessions/{r['id']}/",
+                    "kind": "dir",
+                    "label": f"[{r['status']}] {_shorten(r['task'], 80)}",
+                    "count": 1,
+                }
+                for r in rows
+            ]
+        return []  # session drill-down goes through view_path
+
+    def _view_session(self, tail: list[str], limit: int) -> list[MemoryEntry]:
+        if not tail:
+            return []
+        sid = tail[0]
+        rows = self._conn.execute(
+            "SELECT * FROM memories WHERE session_id=? "
+            "ORDER BY created_at ASC LIMIT ?",
+            (sid, limit),
+        ).fetchall()
+        return [_row_to_entry(r) for r in rows]
+
+    def _list_agents(self, tail: list[str]) -> list[dict[str, Any]]:
+        if not tail:
+            rows = self._conn.execute(
+                "SELECT source, COUNT(*) AS n FROM memories "
+                "WHERE type=? AND source IS NOT NULL "
+                "GROUP BY source ORDER BY source",
+                (MemoryType.AGENT_DOC.value,),
+            ).fetchall()
+            return [
+                {
+                    "path": f"/agents/{r['source']}",
+                    "kind": "leaf",
+                    "label": f"{r['n']} doc entries",
+                    "count": r["n"],
+                }
+                for r in rows
+                if r["source"]
+            ]
+        return []
+
+    def _view_agents(self, tail: list[str], limit: int) -> list[MemoryEntry]:
+        if not tail:
+            return self._recent(limit=limit, type=MemoryType.AGENT_DOC)
+        name = tail[0]
+        rows = self._conn.execute(
+            "SELECT * FROM memories WHERE type=? AND source=? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (MemoryType.AGENT_DOC.value, name, limit),
+        ).fetchall()
+        return [_row_to_entry(r) for r in rows]
+
     @contextmanager
     def session(self, task: str, metadata: dict[str, Any] | None = None) -> Iterator[str]:
         sid = self.start_session(task, metadata)
@@ -366,3 +697,22 @@ def _sanitize_fts_query(q: str) -> str:
     cleaned = "".join(" " if ch in _FTS_RESERVED else ch for ch in q)
     tokens = [t for t in cleaned.split() if t and not t.startswith("-")]
     return " OR ".join(tokens)
+
+
+def _normalize_path(p: str) -> str:
+    """Collapse // and strip trailing spaces. Never ends with // (except root)."""
+    if not p:
+        return "/"
+    p = p.strip()
+    if not p.startswith("/"):
+        p = "/" + p
+    while "//" in p:
+        p = p.replace("//", "/")
+    return p
+
+
+def _shorten(s: str, limit: int) -> str:
+    s = (s or "").strip().replace("\n", " ")
+    if len(s) <= limit:
+        return s
+    return s[: limit - 1] + "..."

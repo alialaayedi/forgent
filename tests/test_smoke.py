@@ -12,7 +12,7 @@ from pathlib import Path
 
 from forgent.memory import MemoryStore, MemoryType
 from forgent.orchestrator import Orchestrator
-from forgent.planner import PlanCard
+from forgent.planner import MemoryPath, PlanCard
 from forgent.registry.loader import Ecosystem, Registry
 
 
@@ -125,10 +125,141 @@ def test_plan_card_to_markdown_has_required_sections(tmp_path):
     # Host instructions
     assert "DISPLAY THE BLOCK ABOVE TO THE USER" in md
     assert "report_outcome" in md
+    # v0.3: memory-tool-style instructions
+    assert "memory_view" in md
+    assert "memory_write" in md
     # Plan sections
     assert "## Plan" in md
     assert "## Gotchas" in md
     assert "## Success criteria" in md
+    # Memory index section always present
+    assert "## Memory index" in md
+
+
+# ---------------------------------------------------------------------------
+# v0.3: virtual path layer + memory index
+# ---------------------------------------------------------------------------
+
+
+def test_virtual_paths_root_lists_nonempty_dirs_only(tmp_path):
+    mem = MemoryStore(tmp_path / "mem.db")
+    assert mem.list_paths("/") == []
+
+    sid = mem.start_session("seed")
+    mem.record_outcome(sid, True, agent_name="backbone")
+    root = mem.list_paths("/")
+    paths = [e["path"] for e in root]
+    assert "/outcomes/" in paths
+    assert "/sessions/" in paths
+
+
+def test_virtual_paths_outcomes_group_by_agent(tmp_path):
+    mem = MemoryStore(tmp_path / "mem.db")
+    sid = mem.start_session("seed")
+    mem.record_outcome(sid, True, agent_name="alpha")
+    mem.record_outcome(sid, False, agent_name="alpha")
+    mem.record_outcome(sid, True, agent_name="beta")
+
+    outcomes = mem.list_paths("/outcomes/")
+    paths = {e["path"]: e["count"] for e in outcomes}
+    assert paths["/outcomes/alpha/"] == 2
+    assert paths["/outcomes/beta/"] == 1
+
+
+def test_virtual_paths_view_returns_entries(tmp_path):
+    mem = MemoryStore(tmp_path / "mem.db")
+    sid = mem.start_session("seed")
+    mem.record_outcome(sid, False, notes="missed SQL injection", agent_name="sentinel")
+
+    entries = mem.view_path("/outcomes/sentinel/")
+    assert len(entries) == 1
+    assert entries[0].type == MemoryType.OUTCOME
+    assert "SQL injection" in entries[0].content
+
+
+def test_write_note_creates_browsable_breadcrumb(tmp_path):
+    mem = MemoryStore(tmp_path / "mem.db")
+    mem.write_note("/notes/auth", "Auth handler is at src/api/auth.ts:42")
+    mem.write_note("/notes/auth", "Use passport middleware")
+    mem.write_note("/notes/db", "Migrations in apps/api/supabase")
+
+    notes_index = mem.list_paths("/notes/")
+    paths = {e["path"]: e["count"] for e in notes_index}
+    assert paths["/notes/auth/"] == 2
+    assert paths["/notes/db/"] == 1
+
+    auth_entries = mem.view_path("/notes/auth/")
+    assert len(auth_entries) == 2
+    contents = [e.content for e in auth_entries]
+    assert "Auth handler is at src/api/auth.ts:42" in contents
+
+
+def test_write_note_rejects_non_notes_path(tmp_path):
+    mem = MemoryStore(tmp_path / "mem.db")
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        mem.write_note("/outcomes/hack", "should not work")
+    with _pytest.raises(ValueError):
+        mem.write_note("/notes/", "needs a topic")
+
+
+def test_plan_card_memory_index_surfaces_prior_outcomes(tmp_path):
+    orch = _fresh_orchestrator(tmp_path)
+    plan1 = asyncio.run(orch.advise_async("review Python for security"))
+    orch.record_outcome(
+        session_id=plan1.session_id,
+        success=False,
+        notes="missed SQL injection in user builder",
+        agent_name=plan1.primary_agent,
+    )
+    # Leave a host breadcrumb too
+    orch.memory.write_note("/notes/sqli", "Always parameterize queries; see auth.py")
+
+    plan2 = asyncio.run(orch.advise_async("audit SQL injection across the API"))
+    idx_paths = [m.path for m in plan2.memory_index]
+    # At least one outcomes path and one notes path should be present
+    assert any(p.startswith("/outcomes/") for p in idx_paths)
+    assert any(p.startswith("/notes/") for p in idx_paths)
+
+    md = plan2.to_markdown()
+    assert "`/notes/sqli/`" in md
+
+
+def test_plan_card_recalled_memory_is_preview_not_dump(tmp_path):
+    mem = MemoryStore(tmp_path / "mem.db")
+    reg = Registry.load()
+    orch = Orchestrator(registry=reg, memory=mem, db_path=str(tmp_path / "mem.db"))
+
+    # Seed a very long note so the old behavior would dump huge content.
+    long_note = "x" * 5000
+    mem.write_note("/notes/bulky", long_note)
+    # Also seed a ROUTING entry that context_for() will pull.
+    sid = mem.start_session("prior")
+    mem.remember(long_note, MemoryType.ROUTING, session_id=sid, tags=["bulky"])
+
+    plan = asyncio.run(orch.advise_async("work related to bulky content"))
+    # The card's recalled_memory must not carry the raw 5k blob.
+    assert len(plan.recalled_memory) <= 900  # preview cap with tolerance
+    # But the path should still be reachable via memory_view.
+    assert any(m.path.startswith("/notes/") for m in plan.memory_index)
+
+
+# ---------------------------------------------------------------------------
+# MCP tool surface (v0.3 additions)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_server_exposes_memory_tools():
+    """memory_view and memory_write must be registered alongside advise/outcome."""
+    import asyncio as _asyncio
+
+    from forgent.mcp_server import mcp
+
+    tools = _asyncio.run(mcp.list_tools())
+    names = {t.name for t in tools}
+    assert "memory_view" in names
+    assert "memory_write" in names
 
 
 def test_advise_writes_plan_and_routing_to_memory(tmp_path):

@@ -6,6 +6,6 @@ host Claude keeps its own tools and context window; forgent contributes
 decomposition, memory, and a curated knowledge pack.
 """
 
-from forgent.planner.planner import PlanCard, Planner
+from forgent.planner.planner import MemoryPath, PlanCard, Planner
 
-__all__ = ["PlanCard", "Planner"]
+__all__ = ["MemoryPath", "PlanCard", "Planner"]

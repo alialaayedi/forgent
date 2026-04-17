@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 DYNAMIC_CATALOG = PKG_DIR / "dynamic.yaml"
 DYNAMIC_AGENTS_DIR = PKG_DIR / "agents" / "claude_code"
 
-FORGE_MODEL_DEFAULT = "claude-opus-4-6"
+FORGE_MODEL_DEFAULT = "claude-opus-4-7"
 
 
 @dataclass

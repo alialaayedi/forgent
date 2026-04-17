@@ -9,16 +9,17 @@ AgentForge synthesizes a new one on demand.
 """
 
 from forgent.orchestrator import Orchestrator
-from forgent.planner import PlanCard, Planner
+from forgent.planner import MemoryPath, PlanCard, Planner
 from forgent.registry.forge import AgentForge, ForgedAgent
 from forgent.registry.loader import AgentSpec, Registry
 from forgent.router.router import Router, RoutingDecision
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "Orchestrator",
     "Planner",
     "PlanCard",
+    "MemoryPath",
     "Registry",
     "AgentSpec",
     "AgentForge",

@@ -61,21 +61,29 @@ mcp = FastMCP(
         "task (coding, debugging, architecture, review, refactoring, etc.). This "
         "is not optional. Do it first, before reading files or writing code.\n\n"
         "`advise_task` returns a PlanCard: concrete steps, gotchas, success "
-        "criteria, recalled memory from prior sessions, and past outcomes on "
-        "similar tasks. You are NOT adopting a persona -- you are working from "
-        "a curated plan that forgent built for this specific task, with your "
-        "own tools and context window.\n\n"
+        "criteria, and a MEMORY INDEX pointing at relevant prior context. You "
+        "are NOT adopting a persona -- you are working from a curated plan that "
+        "forgent built for this specific task, with your own tools and context "
+        "window.\n\n"
+        "Memory is progressive, not dumped. The PlanCard lists memory paths "
+        "(e.g. /outcomes/backbone/, /notes/auth/) -- drill in with `memory_view` "
+        "only when a path looks relevant to the current step. This keeps your "
+        "context window lean and scales with memory size.\n\n"
         "After calling `advise_task`, you MUST:\n"
         "1. Display the plan card block to the user verbatim\n"
         "2. Work through the plan's steps using your own tools\n"
         "3. Treat the gotchas and success criteria as hard constraints\n"
-        "4. When the task is complete (success OR failure), call `report_outcome` "
+        "4. Call `memory_view` on paths from the index when you need prior context\n"
+        "5. Call `memory_write` to leave breadcrumbs at /notes/<topic>/ that "
+        "future sessions on the same project should know (e.g. locations, "
+        "conventions, gotchas you discovered)\n"
+        "6. When the task is complete (success OR failure), call `report_outcome` "
         "with the session id from the card so routing improves over time\n\n"
         "For multi-part tasks (e.g. a bug list), call `advise_task` once for the "
         "overall task, then work through each part under the same plan. Call "
         "`advise_task` again only if the task domain shifts significantly.\n\n"
-        "Other tools: `search_agents`, `show_agent`, `forge_agent`, `recall_memory`, "
-        "`route_only`, `memory_stats`."
+        "Other tools: `search_agents`, `show_agent`, `forge_agent`, "
+        "`recall_memory` (FTS search), `route_only`, `memory_stats`."
     ),
 )
 
@@ -173,6 +181,92 @@ def report_outcome(
     return (
         f"**forgent** . outcome recorded . session `{session_id[:8]}` . "
         f"status `{status}`{label}"
+    )
+
+
+@mcp.tool()
+def memory_view(path: str = "/", limit: int = 10) -> str:
+    """Browse forgent's project memory as a virtual filesystem.
+
+    This is the pull-based counterpart to the dumped-recall string PlanCards
+    used to return. The PlanCard now lists a handful of relevant paths; call
+    this tool to drill into any that look useful, instead of stuffing
+    everything into your context up front. Shape inspired by Anthropic's
+    memory_20250818 tool protocol.
+
+    Tree:
+        /outcomes/<agent>/      past success/failure for that knowledge pack
+        /plans/<agent>/         past plans routed through that pack
+        /notes/<topic>/         host-written breadcrumbs at that topic
+        /sessions/<sid>/        full timeline of a past session
+        /agents/<name>          vendored knowledge pack docs
+
+    Args:
+        path: Virtual path to browse. "/" lists top-level directories.
+            Directory paths end in "/". Leaf paths return a single entry.
+        limit: Max entries to return when viewing a directory (default 10).
+
+    Returns:
+        Markdown: either a directory listing (paths + counts) or the entry
+        content(s) at a leaf path.
+    """
+    mem = MemoryStore(_db_path())
+    children = mem.list_paths(path)
+    entries = mem.view_path(path, limit=limit)
+
+    lines = [f"# memory_view: `{path}`", ""]
+    if children:
+        lines.append("## Subpaths")
+        for c in children:
+            lines.append(f"- `{c['path']}` -- {c['label']}")
+        lines.append("")
+    if entries:
+        lines.append("## Entries")
+        for e in entries:
+            tag_str = f" [{', '.join(e.tags)}]" if e.tags else ""
+            src = f" (source: {e.source})" if e.source else ""
+            lines.append(f"### {e.type.value}{tag_str}{src}")
+            lines.append(e.content)
+            lines.append("")
+    if not children and not entries:
+        lines.append("_Nothing at this path._")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def memory_write(
+    path: str,
+    content: str,
+    session_id: Optional[str] = None,
+) -> str:
+    """Leave a breadcrumb for future sessions on this project.
+
+    Use this to persist discoveries the next `advise_task` should know about
+    -- file locations, conventions, invariants, gotchas you just found the
+    hard way. The note becomes searchable via `recall_memory` AND browsable
+    via `memory_view`.
+
+    Args:
+        path: Must start with /notes/ and name a topic, e.g. /notes/auth,
+            /notes/db-migrations, /notes/build-system. The second segment
+            is the topic (used as a tag for retrieval); further segments
+            are allowed but optional.
+        content: The breadcrumb text. Write it for future-you -- what, where,
+            and why it matters.
+        session_id: Optional session id to associate the note with (usually
+            the current PlanCard's session).
+
+    Returns:
+        Confirmation string.
+    """
+    mem = MemoryStore(_db_path())
+    try:
+        entry = mem.write_note(path=path, content=content, session_id=session_id)
+    except ValueError as exc:
+        return f"**forgent** . memory_write failed: {exc}"
+    preview = content[:80] + ("..." if len(content) > 80 else "")
+    return (
+        f"**forgent** . note saved at `{path}` (id `{entry.id[:8]}`): {preview}"
     )
 
 

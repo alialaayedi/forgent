@@ -44,18 +44,29 @@ src/forgent/
 sources/                     # cloned upstream repos (read-only inputs to curation)
 ```
 
-### The v2 flow
+### The v0.3 flow (progressive memory)
 
 ```
 task
   -> router.route(task)                 # pick knowledge pack
-  -> memory.context_for(task)           # recall prior plans/outcomes/decisions
+  -> memory.context_for(task)           # short recall preview
   -> memory.recent_outcomes(agent)      # pull feedback for that pack
+  -> orch._build_memory_index(agent)    # virtual paths, not a dumped string
   -> planner.plan(task, decision, ...)  # LLM tool-use -> PlanCard
   -> PlanCard.to_markdown()             # returned from advise_task
-  -> [host LLM executes with own tools]
+  -> [host LLM executes with own tools, calling memory_view on demand]
+  -> memory_write("/notes/<topic>", ...)     # host leaves breadcrumbs
   -> report_outcome(session, success, notes) # closes the loop
 ```
+
+**What changed in v0.3.** Recall used to be push-based: the planner dumped
+a big `recalled_memory` string into every PlanCard. Now it's pull-based:
+the PlanCard carries a compact **memory index** of virtual paths
+(`/outcomes/<agent>/`, `/notes/<topic>/`, `/sessions/`) and the host
+calls `memory_view(path)` on demand. Shape mirrors Anthropic's
+`memory_20250818` tool protocol. The host can also write breadcrumbs
+back via `memory_write`. See `memory/store.py` list_paths/view_path/
+write_note for the backend.
 
 ## The memory system (read this first)
 
@@ -84,6 +95,21 @@ Why this matters:
 - `MemoryType.OUTCOME` closes the feedback loop: `record_outcome(session, success, notes, agent)` after a task is done, and the next plan for the same domain surfaces that history as gotchas.
 - Recall is keyword (FTS5/BM25), not embedding — zero external dependencies, fast.
 - An optional embedding column can be added later without changing the API.
+
+v0.3 adds a **virtual path layer** over the same SQL tables. No schema
+change — paths are derived from `(type, source, tags)`:
+
+| Path | Maps to |
+|---|---|
+| `/outcomes/<agent>/` | OUTCOME entries where `source=<agent>` |
+| `/plans/<agent>/` | PLAN entries where `source=<agent>` |
+| `/notes/<topic>/` | NOTE entries tagged `host-note` + `<topic>` |
+| `/sessions/<sid>/` | all entries with `session_id=<sid>` |
+| `/agents/<name>` | AGENT_DOC entries for `<name>` |
+
+The MCP tools `memory_view` and `memory_write` expose this surface to the
+host. Internally, `orchestrator._build_memory_index` composes a small set
+of paths for every PlanCard.
 
 **Never** add a new persistence layer alongside this. Extend `MemoryStore` instead.
 

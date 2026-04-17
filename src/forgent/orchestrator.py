@@ -20,7 +20,7 @@ import asyncio
 from typing import Any
 
 from forgent.memory import MemoryStore, MemoryType
-from forgent.planner import PlanCard, Planner
+from forgent.planner import MemoryPath, PlanCard, Planner
 from forgent.registry.forge import AgentForge, ForgedAgent
 from forgent.registry.loader import Registry
 from forgent.router.router import Router
@@ -101,7 +101,13 @@ class Orchestrator:
         # 5. Pull past outcomes for this agent so prior failures bleed into gotchas.
         past_outcomes = self.memory.recent_outcomes(agent_name=agent.name, limit=6)
 
-        # 6. Build the PlanCard.
+        # 6. Build the memory index -- a handful of virtual paths pointing at
+        #    relevant prior context. This is the primary memory surface in
+        #    v0.3: the host pulls detail via memory_view on demand instead of
+        #    parsing a dumped recall string.
+        memory_index = self._build_memory_index(agent_name=agent.name)
+
+        # 7. Build the PlanCard.
         plan = self.planner.plan(
             task=task,
             session_id=sid,
@@ -109,10 +115,11 @@ class Orchestrator:
             agent=agent,
             recalled_memory=recalled,
             past_outcomes=past_outcomes,
+            memory_index=memory_index,
             forged=forged,
         )
 
-        # 7. Persist the routing decision and the plan itself.
+        # 8. Persist the routing decision and the plan itself.
         self.memory.remember(
             f"Routed to '{decision.primary}' (mode={decision.mode}, "
             f"supporting={decision.supporting}). Reason: {decision.reasoning}",
@@ -165,6 +172,80 @@ class Orchestrator:
             notes=notes,
             agent_name=agent_name,
         )
+
+    # ------------------------------------------------------------------
+    # Memory index -- the progressive-recall surface for v0.3 PlanCards.
+    # ------------------------------------------------------------------
+
+    def _build_memory_index(self, agent_name: str) -> list[MemoryPath]:
+        """Return a compact set of virtual paths pointing at relevant memory.
+
+        We don't try to be clever here -- the planner LLM sees these paths
+        alongside the task and can weigh relevance downstream. The shape
+        mirrors Anthropic's memory tool tree so the host can browse them via
+        memory_view on demand.
+
+        Included by default:
+          - /outcomes/<agent>/ if this agent has any prior outcomes
+          - /plans/<agent>/    if this agent has any prior plans
+          - up to 5 /notes/<topic>/ directories (host-written breadcrumbs)
+          - /sessions/ as a catch-all for "what did I do recently"
+        """
+        index: list[MemoryPath] = []
+
+        def _surface(kind: str) -> None:
+            """Prefer the current agent's scoped dir; fall back to the top-level dir."""
+            children = self.memory.list_paths(f"/{kind}/")
+            if not children:
+                return
+            agent_hit = next(
+                (e for e in children if e["path"].endswith(f"/{agent_name}/")),
+                None,
+            )
+            if agent_hit is not None:
+                index.append(
+                    MemoryPath(
+                        path=agent_hit["path"],
+                        label=agent_hit["label"],
+                        count=agent_hit["count"],
+                    )
+                )
+                return
+            total = sum(e.get("count", 0) for e in children)
+            index.append(
+                MemoryPath(
+                    path=f"/{kind}/",
+                    label=f"{total} {kind} entries across {len(children)} agent(s)",
+                    count=total,
+                )
+            )
+
+        _surface("outcomes")
+        _surface("plans")
+
+        notes_root = self.memory.list_paths("/notes/")
+        for entry in notes_root[:5]:
+            index.append(
+                MemoryPath(
+                    path=entry["path"],
+                    label=entry["label"],
+                    count=entry["count"],
+                )
+            )
+
+        sessions_root = self.memory.list_paths("/")
+        for entry in sessions_root:
+            if entry["path"] == "/sessions/":
+                index.append(
+                    MemoryPath(
+                        path="/sessions/",
+                        label=f"{entry['count']} prior sessions -- browse the most recent",
+                        count=entry["count"],
+                    )
+                )
+                break
+
+        return index
 
     # ------------------------------------------------------------------
 
