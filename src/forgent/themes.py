@@ -144,6 +144,12 @@ _NF_TERMINALS: frozenset[str] = frozenset({
     "WarpTerminal",
     "Hyper",
     "Apple_Terminal",  # users with Homebrew usually have Nerd Fonts
+    "vscode",          # VS Code integrated terminal -- user can configure font
+    "cursor",          # Cursor fork
+    "windsurf",        # Windsurf fork
+    "tabby",
+    "rio",
+    "contour",
 })
 
 

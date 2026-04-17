@@ -76,6 +76,26 @@ _GLYPH_CAP_RIGHT = "\ue0b4"         # rounded right cap
 _GLYPH_BRANCH = "\u2387"            # branch icon (non-NF, widely supported)
 _GLYPH_CLOCK = "\u25f7"             # clock-ish (non-NF)
 
+# Per-segment emoji icons. These ride along with the text in rich mode and
+# give the status line visible anchors without requiring Nerd Fonts. Every
+# one here is in the standard Unicode emoji set that ships with iOS / macOS
+# fonts -- works out of the box in every modern terminal.
+_ICONS: dict[str, str] = {
+    "forgent": "\u26a1",      # ⚡ bolt -- forgent signature
+    "agent": "\u25c6",        # ◆ diamond -- active knowledge pack
+    "wins": "\u2713",         # ✓ check -- outcomes
+    "notes": "\U0001f4dd",    # 📝 memo -- host-written notes
+    "dir": "\U0001f4c1",      # 📁 folder
+    "git": "",                # branch glyph is already in the segment text
+    "ctx_bar": "",            # the bar itself is the icon
+    "cost": "\U0001f4b0",     # 💰 money bag
+    "rate_5h": "\u23f1",      # ⏱ stopwatch
+    "tokens_io": "",          # ↓↑ already in text
+    "model": "\U0001f916",    # 🤖 robot
+    "time": "\u23f0",         # ⏰ alarm clock
+    "session_age": "\u23f3",  # ⏳ hourglass
+}
+
 
 @dataclass
 class RenderContext:
@@ -663,21 +683,22 @@ def _build_segments(rc: RenderContext) -> list[Segment]:
 
 
 def _layout_minimal(segs: list[Segment], rc: RenderContext) -> str:
-    """Plain-text-with-color layout. No backgrounds, no glyph separators."""
+    """Plain-text-with-color layout, now with emoji icons for visual anchors.
+
+    No backgrounds, no glyph separators -- works on any terminal, including
+    dumb ones. Emojis live in the standard Unicode emoji set so they render
+    everywhere without Nerd Fonts.
+    """
     if not segs:
         return ""
-    parts: list[str] = []
     arrow = f" {_dim(rc)}{themes.fg(rc.palette.neutral[0]) if not rc.plain else ''}\u203a{_reset(rc)} "
     dot = f" {_dim(rc)}{themes.fg(rc.palette.neutral[0]) if not rc.plain else ''}\u00b7{_reset(rc)} "
     bar = f"  {_dim(rc)}{themes.fg(rc.palette.neutral[0]) if not rc.plain else ''}\u2502{_reset(rc)}  "
 
-    # Group semantically: forgent+agent linked by ›, within-group by ·,
-    # between-group by │.
     grouped = _group_for_minimal(segs)
     rendered_groups: list[str] = []
     for group in grouped:
-        chunks = [_fmt_minimal(s, rc) for s in group]
-        # If this group starts with "forgent" and has an agent, use >
+        chunks = [_fmt_minimal_with_icon(s, rc) for s in group]
         if len(group) >= 2 and group[0].key == "forgent" and group[1].key == "agent":
             head = f"{chunks[0]}{arrow}{chunks[1]}"
             tail = dot.join(chunks[2:])
@@ -685,6 +706,33 @@ def _layout_minimal(segs: list[Segment], rc: RenderContext) -> str:
         else:
             rendered_groups.append(dot.join(chunks))
     return bar.join(rendered_groups)
+
+
+def _fmt_minimal_with_icon(seg: Segment, rc: RenderContext) -> str:
+    """Minimal formatter that prepends the segment's emoji icon if any."""
+    icon = _ICONS.get(seg.key, "")
+    text = f"{icon} {seg.text}" if icon else seg.text
+    prefix = _bold(rc) if seg.bold else ""
+    return f"{prefix}{_fg(seg.fg, rc)}{text}{_reset(rc)}"
+
+
+def _layout_rich(segs: list[Segment], rc: RenderContext) -> str:
+    """Background-colored pills with emoji icons. No Nerd-Font glyphs.
+
+    This is the default layout for terminals without Nerd Fonts -- matches
+    the visual density of powerline without needing the private-use-area
+    glyphs. Pills are separated by a single space, giving the 'floating
+    chip' look that modern designs use.
+    """
+    if not segs:
+        return ""
+    out: list[str] = []
+    for s in segs:
+        icon = _ICONS.get(s.key, "")
+        label = f"{icon} {s.text}" if icon else s.text
+        pill_seg = Segment(s.key, label, s.fg, s.bg, s.priority, bold=s.bold)
+        out.append(_fmt_pill(pill_seg, rc))
+    return " ".join(out)
 
 
 def _group_for_minimal(segs: list[Segment]) -> list[list[Segment]]:
@@ -755,10 +803,11 @@ def _render_for_width(segs: list[Segment], rc: RenderContext) -> str:
     """Render with priority-based flex collapse + optional wrap to 2 lines."""
     layout_fn = {
         "minimal": _layout_minimal,
+        "rich": _layout_rich,
         "powerline": _layout_powerline,
         "capsule": _layout_capsule,
         "compact": _layout_compact,
-    }.get(rc.mode, _layout_minimal)
+    }.get(rc.mode, _layout_rich)
 
     current = list(segs)
     line = layout_fn(current, rc)
@@ -797,13 +846,15 @@ def _truncate(s: str, limit: int) -> str:
 
 def _resolve_mode(config: ForgentConfig) -> str:
     explicit = os.environ.get("FORGENT_STATUSLINE_MODE")
-    if explicit in ("minimal", "powerline", "capsule", "compact"):
+    if explicit in ("minimal", "rich", "powerline", "capsule", "compact"):
         return explicit
     configured = config.render_mode()
-    if configured in ("minimal", "powerline", "capsule", "compact"):
+    if configured in ("minimal", "rich", "powerline", "capsule", "compact"):
         return configured
-    # auto -- pick based on NF detection
-    return "powerline" if themes.supports_nerd_font() else "minimal"
+    # auto -- powerline when the terminal ships Nerd Fonts, else rich (bg
+    # colored pills with emoji icons -- works anywhere). minimal is only
+    # picked when the user explicitly opts in via config.
+    return "powerline" if themes.supports_nerd_font() else "rich"
 
 
 def _resolve_theme(config: ForgentConfig) -> Palette:

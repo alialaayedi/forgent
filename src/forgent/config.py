@@ -101,7 +101,7 @@ class ForgentConfig:
         return str(self._read().get("render_mode") or "auto")
 
     def set_render_mode(self, mode: str) -> None:
-        if mode not in ("auto", "minimal", "powerline", "capsule", "compact"):
+        if mode not in ("auto", "minimal", "rich", "powerline", "capsule", "compact"):
             raise ValueError(f"unknown render mode {mode!r}")
         data = self._read()
         data["render_mode"] = mode
