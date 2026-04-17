@@ -660,11 +660,11 @@ def _build_segments(rc: RenderContext) -> list[Segment]:
             text = f"\u2193 {_humanize_tokens(inp)} \u2191 {_humanize_tokens(outp)}"
             out.append(Segment("tokens_io", text, p.tokens[0], p.tokens[1], 45))
 
-    # 11. model + context cap
+    # 11. model + context cap -- high priority, this is critical info
     if rc.segment_enabled("model"):
         label = _model_with_cap(ctx)
         if label:
-            out.append(Segment("model", label, p.model[0], p.model[1], 80))
+            out.append(Segment("model", label, p.model[0], p.model[1], 93))
 
     # 12. wall clock (opt-in)
     if rc.segment_enabled("time"):
@@ -717,21 +717,37 @@ def _fmt_minimal_with_icon(seg: Segment, rc: RenderContext) -> str:
 
 
 def _layout_rich(segs: list[Segment], rc: RenderContext) -> str:
-    """Background-colored pills with emoji icons. No Nerd-Font glyphs.
+    """Bubble-shaped pills with emoji icons. No Nerd-Font glyphs required.
 
-    This is the default layout for terminals without Nerd Fonts -- matches
-    the visual density of powerline without needing the private-use-area
-    glyphs. Pills are separated by a single space, giving the 'floating
-    chip' look that modern designs use.
+    Each segment is wrapped in half-circle caps (U+25D6 ◖ and U+25D7 ◗)
+    colored as the segment's background on the default terminal background.
+    This produces real round bubble shapes on any terminal -- no Nerd
+    Font needed, works identically in iTerm / Alacritty / VS Code / Warp /
+    Terminal.app / Ghostty / you name it.
+
+    Pills are separated by a single space so each bubble floats
+    independently.
     """
     if not segs:
         return ""
+    cap_left = "\u25d6"   # ◖ LEFT HALF BLACK CIRCLE
+    cap_right = "\u25d7"  # ◗ RIGHT HALF BLACK CIRCLE
     out: list[str] = []
     for s in segs:
         icon = _ICONS.get(s.key, "")
         label = f"{icon} {s.text}" if icon else s.text
         pill_seg = Segment(s.key, label, s.fg, s.bg, s.priority, bold=s.bold)
-        out.append(_fmt_pill(pill_seg, rc))
+        if rc.plain:
+            out.append(_fmt_pill(pill_seg, rc))
+            continue
+        # Left cap in the pill's bg color on default bg, then the pill body
+        # with bg fill, then the right cap mirroring. Resets between so
+        # the caps don't pick up the body's bg.
+        left = f"{themes.fg(s.bg)}{cap_left}{_reset(rc)}"
+        right = f"{themes.fg(s.bg)}{cap_right}{_reset(rc)}"
+        bold = _bold(rc) if s.bold else ""
+        body = f"{_fg(s.fg, rc)}{_bg(s.bg, rc)}{bold}{label}{_reset(rc)}"
+        out.append(f"{left}{body}{right}")
     return " ".join(out)
 
 

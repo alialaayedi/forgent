@@ -44,27 +44,39 @@ class Palette:
     neutral: tuple[int, int]       # separators, muted text
 
 
-# Default "dark" palette — Starship pastel-powerline-inspired, forgent-branded.
-# Background indices are picked so adjacent pills contrast at the glyph edge.
+# Default "dark" palette — modern, Nord/Catppuccin-inspired. Most pills sit
+# on a single dark-neutral background so the line reads as one continuous
+# surface; color is reserved for the forgent signature and state signals
+# (dirty, compact warning, failing outcomes). Bold is used sparingly --
+# only the forgent chip and any red/alert pills.
+#
+# This is a deliberate retreat from v0.4.0's pastel-rainbow pills. Modern
+# UIs (Linear, Vercel, Zellij, starship tokyo-night) converged on "quiet
+# by default, loud only when something needs attention." The status line
+# follows the same principle.
+_NEUTRAL_BG = 237   # #3a3a3a -- our "chip surface"
+_NEUTRAL_FG = 252   # #d0d0d0 -- easy-on-eyes light gray
+_MUTED_FG = 247     # #9e9e9e -- secondary text
+
 DARK = Palette(
     name="dark",
-    forgent=(231, 125),      # white on deep magenta
-    agent=(232, 178),        # near-black on amber
-    wins_ok=(232, 35),       # near-black on green
-    wins_warn=(232, 208),    # near-black on orange
-    wins_bad=(231, 167),     # white on red
-    dir=(231, 39),           # white on sky blue
-    git=(232, 45),           # near-black on cyan
-    git_dirty=(231, 167),    # white on red
-    ctx_ok=(231, 35),        # white on green
-    ctx_warn=(232, 208),     # near-black on orange
-    ctx_bad=(231, 167),      # white on red
-    cost=(232, 179),         # near-black on gold
-    rate=(232, 141),         # near-black on purple
-    tokens=(231, 61),        # white on muted blue
-    model=(231, 67),         # white on dusty blue
-    time=(231, 240),         # white on charcoal
-    neutral=(245, 0),        # gray on default
+    forgent=(231, 176),      # white on muted magenta -- the one loud chip
+    agent=(_NEUTRAL_FG, _NEUTRAL_BG),         # quiet
+    wins_ok=(108, _NEUTRAL_BG),               # muted green fg
+    wins_warn=(179, _NEUTRAL_BG),             # muted amber fg
+    wins_bad=(167, _NEUTRAL_BG),              # soft red fg
+    dir=(_NEUTRAL_FG, _NEUTRAL_BG),
+    git=(_NEUTRAL_FG, _NEUTRAL_BG),
+    git_dirty=(231, 167),                     # white on soft red (accent)
+    ctx_ok=(108, _NEUTRAL_BG),
+    ctx_warn=(173, _NEUTRAL_BG),
+    ctx_bad=(231, 167),                       # white on red -- loud on alert
+    cost=(179, _NEUTRAL_BG),
+    rate=(140, _NEUTRAL_BG),
+    tokens=(_MUTED_FG, _NEUTRAL_BG),
+    model=(109, _NEUTRAL_BG),                 # muted cyan fg
+    time=(_MUTED_FG, _NEUTRAL_BG),
+    neutral=(_MUTED_FG, 0),
 )
 
 # Light palette — muted versions tuned for light backgrounds.
