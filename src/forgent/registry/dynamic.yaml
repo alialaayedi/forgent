@@ -1,0 +1,23 @@
+agents:
+- name: tovo-specialist
+  ecosystem: claude_code
+  category: domain-specific
+  description: "Expert subagent for the Tovo parking enforcement SaaS monorepo \u2014\
+    \ implements features across NestJS API, Expo React Native mobile, and React admin-web\
+    \ apps while enforcing domain rules (violation state machine, repeat-offender\
+    \ logic, grace periods), ADR compliance, module boundaries, BullMQ queue patterns,\
+    \ Supabase multi-tenancy, and Tovo brand standards."
+  capabilities:
+  - nestjs
+  - expo-react-native
+  - bullmq
+  - supabase
+  - prisma
+  - violation-state-machine
+  - monorepo-turborepo
+  - parking-enforcement-domain
+  source_repo: forge
+  source_path: dynamic/tovo-specialist.md
+  model: opus
+  kind: agent
+  forged: true
