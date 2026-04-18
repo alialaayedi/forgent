@@ -76,24 +76,26 @@ _GLYPH_CAP_RIGHT = "\ue0b4"         # rounded right cap
 _GLYPH_BRANCH = "\u2387"            # branch icon (non-NF, widely supported)
 _GLYPH_CLOCK = "\u25f7"             # clock-ish (non-NF)
 
-# Per-segment emoji icons. These ride along with the text in rich mode and
-# give the status line visible anchors without requiring Nerd Fonts. Every
-# one here is in the standard Unicode emoji set that ships with iOS / macOS
-# fonts -- works out of the box in every modern terminal.
+# Per-segment glyph icons. Pulled from the Geometric Shapes (U+25xx) and
+# Dingbats (U+27xx) Unicode blocks -- monochrome text glyphs, no emoji
+# rendering, no Nerd-Font dependency. They ride along with the text in rich
+# mode to give the line visible anchors while staying in line-height and
+# inheriting the segment's foreground color (unlike emoji, which are
+# colored by the font and don't pick up the palette).
 _ICONS: dict[str, str] = {
-    "forgent": "\u26a1",      # ⚡ bolt -- forgent signature
-    "agent": "\u25c6",        # ◆ diamond -- active knowledge pack
+    "forgent": "\u2726",      # ✦ black four-pointed star -- forgent signature
+    "agent": "\u25c6",        # ◆ black diamond -- active knowledge pack
     "wins": "\u2713",         # ✓ check -- outcomes
-    "notes": "\U0001f4dd",    # 📝 memo -- host-written notes
-    "dir": "\U0001f4c1",      # 📁 folder
+    "notes": "\u270e",        # ✎ lower-right pencil -- host-written notes
+    "dir": "\u25b8",          # ▸ black right-pointing small triangle -- path
     "git": "",                # branch glyph is already in the segment text
     "ctx_bar": "",            # the bar itself is the icon
-    "cost": "\U0001f4b0",     # 💰 money bag
-    "rate_5h": "\u23f1",      # ⏱ stopwatch
-    "tokens_io": "",          # ↓↑ already in text
-    "model": "\U0001f916",    # 🤖 robot
-    "time": "\u23f0",         # ⏰ alarm clock
-    "session_age": "\u23f3",  # ⏳ hourglass
+    "cost": "",               # "$" is already in the segment text
+    "rate_5h": "\u25f7",      # ◷ circle with upper-right quadrant -- clockish
+    "tokens_io": "",          # arrows already in text
+    "model": "\u25ce",        # ◎ bullseye -- the active model
+    "time": "\u25f4",         # ◴ circle with upper-left quadrant
+    "session_age": "\u25d4",  # ◔ circle with upper-right quadrant black
 }
 
 
@@ -683,11 +685,11 @@ def _build_segments(rc: RenderContext) -> list[Segment]:
 
 
 def _layout_minimal(segs: list[Segment], rc: RenderContext) -> str:
-    """Plain-text-with-color layout, now with emoji icons for visual anchors.
+    """Plain-text-with-color layout, now with glyph icons for visual anchors.
 
     No backgrounds, no glyph separators -- works on any terminal, including
-    dumb ones. Emojis live in the standard Unicode emoji set so they render
-    everywhere without Nerd Fonts.
+    dumb ones. Icons are Unicode geometric shapes / dingbats (not emoji),
+    so they stay monochrome and inherit the segment's foreground color.
     """
     if not segs:
         return ""
@@ -709,7 +711,7 @@ def _layout_minimal(segs: list[Segment], rc: RenderContext) -> str:
 
 
 def _fmt_minimal_with_icon(seg: Segment, rc: RenderContext) -> str:
-    """Minimal formatter that prepends the segment's emoji icon if any."""
+    """Minimal formatter that prepends the segment's glyph icon if any."""
     icon = _ICONS.get(seg.key, "")
     text = f"{icon} {seg.text}" if icon else seg.text
     prefix = _bold(rc) if seg.bold else ""
@@ -717,7 +719,7 @@ def _fmt_minimal_with_icon(seg: Segment, rc: RenderContext) -> str:
 
 
 def _layout_rich(segs: list[Segment], rc: RenderContext) -> str:
-    """Bubble-shaped pills with emoji icons. No Nerd-Font glyphs required.
+    """Bubble-shaped pills with glyph icons. No Nerd-Font glyphs required.
 
     Each segment is wrapped in half-circle caps (U+25D6 ◖ and U+25D7 ◗)
     colored as the segment's background on the default terminal background.
@@ -868,7 +870,7 @@ def _resolve_mode(config: ForgentConfig) -> str:
     if configured in ("minimal", "rich", "powerline", "capsule", "compact"):
         return configured
     # auto -- powerline when the terminal ships Nerd Fonts, else rich (bg
-    # colored pills with emoji icons -- works anywhere). minimal is only
+    # colored pills with glyph icons -- works anywhere). minimal is only
     # picked when the user explicitly opts in via config.
     return "powerline" if themes.supports_nerd_font() else "rich"
 
