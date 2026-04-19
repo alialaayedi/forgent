@@ -2,9 +2,9 @@ include README.md
 include CLAUDE.md
 include LICENSE
 include Makefile
-recursive-include src/orchestrator/registry *.yaml
-recursive-include src/orchestrator/registry/agents *.md
-graft src/orchestrator/registry/agents
+recursive-include src/forgent/registry *.yaml
+recursive-include src/forgent/registry/agents *.md
+graft src/forgent/registry/agents
 prune sources
 prune .venv
 prune build

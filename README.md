@@ -77,26 +77,32 @@ A user with a task currently has to pick a *silo* before they can pick a *soluti
 
 Requires Python 3.10+.
 
-### Quickest — pipx + install script (recommended)
+### From PyPI (recommended)
 
 ```bash
-git clone <this repo>
-cd agent-orchestration
-python3 -m build --wheel              # produces dist/forgent-*.whl
-./scripts/install.sh                  # pipx-installs + prints MCP registration commands
+pip install forgent              # core CLI + MCP server + status line
+pip install "forgent[all]"       # + optional LangGraph / CrewAI integrations
 ```
 
-After this, both `orchestrator` and `forgent-mcp` are on your `$PATH` from any directory.
+This puts `forgent`, `forgent-mcp`, and `forgent-statusline` on your `$PATH`.
 
-### Manual / development
+Prefer an isolated install? [`pipx`](https://pipx.pypa.io) is the cleanest path:
 
 ```bash
+pipx install forgent
+```
+
+### From source (development)
+
+```bash
+git clone https://github.com/alialaayedi/forgent.git
+cd forgent
 make install                          # creates .venv, installs editable, fixes macOS .pth quirk
 make vendor                           # copies source agent files into the registry
 make test                             # runs the smoke suite
 
 cp .env.example .env                  # add ANTHROPIC_API_KEY
-.venv/bin/forgent stats
+.venv/bin/forgent advise "hello"
 ```
 
 ### Register with every Claude environment
