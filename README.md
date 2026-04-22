@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alialaayedi/forgent/main/assets/brand/banner.svg" alt="forgent — grow your own AI subagents on demand" width="100%"/>
+  <img src="https://raw.githubusercontent.com/alialaayedi/forgent/main/assets/brand/banner.svg" alt="forgent — a planning + knowledge layer for AI coding agents" width="100%"/>
 </p>
 
 # forgent
 
-> **Give Claude superpowers.** A meta-orchestrator that routes any task to the best curated agent across Claude Code subagents, Python multi-agent frameworks (LangGraph / CrewAI / OpenAI Agents SDK / mcp-agent), and MCP servers — and **forges brand-new specialist subagents on demand** when no curated agent fits.
+> **Plans that learn.** A planning + knowledge layer for AI coding agents. Give it a task; it routes to the best curated specialist out of 60+ knowledge packs, pulls relevant past outcomes from memory, and returns a structured **PlanCard** — steps, gotchas, success criteria, and a memory index — for your host LLM to execute with its own tools.
 >
-> Ships as a single MCP server. Drop it into Claude Code, Claude Desktop, Cursor, Zed, or any MCP client and every Claude session gets the orchestrator's tools.
+> Ships as a single stdio MCP server. Drop it into Claude Code, Claude Desktop, Cursor, Zed, or any MCP client; every session gets the same `advise_task` / `report_outcome` / `memory_view` surface.
 
 <p align="center">
   <a href="https://pypi.org/project/forgent/"><img src="https://img.shields.io/pypi/v/forgent?style=flat-square&color=eb5160&labelColor=071013" alt="PyPI"/></a>
@@ -17,61 +17,72 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alialaayedi/forgent/main/assets/brand/demo.gif" alt="forgent in action — stats, search, forge, recall" width="100%"/>
+  <img src="https://raw.githubusercontent.com/alialaayedi/forgent/main/assets/brand/demo.gif" alt="forgent in action — advise, recall, forge, outcome" width="100%"/>
 </p>
 
 ## Why this exists
 
-The agent ecosystem is fragmented into three silos that don't talk to each other:
+The agent ecosystem is fragmented into silos that don't talk to each other:
 
 | Silo | Top repos | Strengths | Weaknesses |
 |---|---|---|---|
-| Claude Code subagents | wshobson/agents (32.7k★), VoltAgent/awesome-claude-code-subagents, 0xfurai/claude-code-subagents | huge variety of specialists, markdown-portable | only run inside Claude Code |
+| Claude Code subagents | wshobson/agents (32.7k★), VoltAgent/awesome-claude-code-subagents, 0xfurai/claude-code-subagents | huge variety of specialists, markdown-portable | only run inside Claude Code, no shared memory |
 | Python frameworks | LangGraph, CrewAI, AutoGen, lastmile-ai/mcp-agent | production-ready workflows, eval tooling | need code, framework lock-in |
-| MCP servers | modelcontextprotocol/servers, github/github-mcp-server, lastmile-ai/mcp-agent | standardized tools and data access | one-server-per-tool, no orchestration |
+| MCP servers | modelcontextprotocol/servers, github/github-mcp-server | standardized tools and data access | one-server-per-tool, no orchestration |
 
-A user with a task currently has to pick a *silo* before they can pick a *solution*. This project erases that line. You give it a task in plain English. It picks the best agent from any ecosystem, runs it, remembers what happened, and gets smarter next time.
+Each ecosystem ships *personas*. A prompt swap isn't a specialist — and nobody ties that curated knowledge to a planning layer with an outcome-aware memory. Forgent does.
+
+### Why a planning layer, not another agent runner
+
+v1 of forgent ran agents itself via per-ecosystem adapters, each with its own tool-use loop. That duplicated the host LLM's capabilities while pretending a prompt swap was a specialist. **v2 inverts it:** the host Claude stays in the driver's seat with its own tools. Forgent contributes the things a single agent can't do on its own — task decomposition, curated checklists, retrieved memory across sessions, and an outcome feedback loop. No adapters, no in-process tool loops.
 
 ## What's inside
 
-- **63 hand-curated agents** across 11 categories (core dev, language specialists, infrastructure, quality/security, data/AI, dev experience, specialized domains, business/product, meta-orchestration, research) — picked from the highest-quality public repos.
-- **AgentForge** — synthesizes brand-new specialist subagents on demand using Claude. The orchestrator literally grows new capabilities over time. Forged agents are persisted and reused forever.
-- **LLM-based router** with structured tool-use that maps any task → best primary agent + supporting agents + execution mode (single / sequential / parallel / evaluator-optimizer). Falls back to keyword scoring when no API key is available.
-- **SQLite + FTS5 memory system** that stores every task, routing decision, and agent output, and recalls relevant past context on every new task. Zero external dependencies.
-- **Three ecosystem adapters** with a common async interface — Claude Code (Anthropic API), Python frameworks (workflow patterns from `lastmile-ai/mcp-agent`), and MCP servers (stdio + optional `mcp` SDK).
-- **Stdio MCP server** — exposes 8 tools (`run_task`, `forge_agent`, `list_agents`, `search_agents`, `show_agent`, `recall_memory`, `memory_stats`, `route_only`) so every Claude environment can call the orchestrator.
-- **Typer-based CLI** for running tasks, browsing the registry, forging agents, and inspecting memory.
-- **Shippable wheel** + one-shot install script that handles pipx, the macOS sandbox quirk, and prints the exact registration commands for Claude Code and Claude Desktop.
+- **63 hand-curated knowledge packs** across 11 categories (core dev, language specialists, infrastructure, quality/security, data/AI, dev experience, specialized domains, business/product, meta-orchestration, research) — picked from the highest-quality public repos for definition quality, not auto-imported.
+- **Planner + PlanCard** — the heart of v2. Compiles a routed knowledge pack plus past outcomes into 3–6 concrete steps, specific gotchas, verifiable success criteria, and a compact memory index. `PlanCard.to_markdown()` is what the host consumes.
+- **LLM-based router** that maps any task → primary pack + supporting packs + confidence + reasoning, factoring in prior `OUTCOME` entries for that pack. Falls back to a deterministic heuristic when no API key is set.
+- **SQLite + FTS5 memory** with an `OUTCOME` type that closes the feedback loop. `record_outcome(session, success, notes, agent)` after a task; the next plan for the same domain surfaces that history as gotchas. Zero external dependencies.
+- **Virtual-path memory surface** (v0.3, mirrors Anthropic's `memory_20250818` protocol). The PlanCard carries paths like `/outcomes/<agent>/`, `/notes/<topic>/`, `/sessions/<sid>/`; the host pulls only what it needs via `memory_view(path)` and leaves breadcrumbs via `memory_write`.
+- **AgentForge** — synthesizes brand-new knowledge packs on demand using Claude when no curated pack fits. Forged packs are persisted to `dynamic.yaml` + `registry/agents/claude_code/<name>.md` and appear in every future routing call.
+- **Stdio MCP server** — the 12 tools below, so every Claude environment calls the same planning surface.
+- **Typer-based CLI** for advising on tasks, recording outcomes, browsing the registry, forging packs, and inspecting memory.
+
+### MCP tools exposed
+
+| Tool | Purpose |
+|---|---|
+| `advise_task` | Route + plan; returns a PlanCard markdown for the host to execute |
+| `revise_plan` | Amend a PlanCard with mid-flight findings |
+| `report_outcome` | Close the loop — persist success/notes for a session |
+| `memory_view` | Pull-based recall over virtual paths (`/outcomes/…`, `/notes/…`, `/sessions/…`, `/agents/…`) |
+| `memory_write` | Write a breadcrumb note back to memory |
+| `list_agents` | Registry listing, filterable by ecosystem/category |
+| `search_agents` | Keyword search over the registry |
+| `show_agent` | Full knowledge pack body |
+| `recall_memory` | Ad-hoc FTS5 recall, optionally filtered by memory type |
+| `memory_stats` | What's stored and how much |
+| `forge_agent` | Synthesize a brand-new pack when none fits |
+| `route_only` | Just the routing decision, no plan |
 
 ## Architecture
 
 ```
-                ┌───────────────────────────┐
-                │   forgent run "..."  │
-                └─────────────┬─────────────┘
-                              │
-                ┌─────────────▼─────────────┐
-                │   MemoryStore.context_for │  ← recall past sessions
-                └─────────────┬─────────────┘
-                              │
-                ┌─────────────▼─────────────┐
-                │   Router (LLM + tool-use) │  ← classify, pick agents
-                └─────────────┬─────────────┘
-                              │
-       ┌──────────────────────┼──────────────────────┐
-       ▼                      ▼                      ▼
- ┌───────────┐         ┌────────────┐         ┌────────────┐
- │ Claude    │         │ Python     │         │ MCP server │
- │ Code      │         │ framework  │         │ adapter    │
- │ adapter   │         │ adapter    │         │ (stdio)    │
- └─────┬─────┘         └──────┬─────┘         └──────┬─────┘
-       │                      │                      │
-       └──────────────────────┼──────────────────────┘
-                              │
-                ┌─────────────▼─────────────┐
-                │   MemoryStore.remember    │  ← persist for next time
-                └───────────────────────────┘
+task
+  -> router.route(task)                 # pick knowledge pack + supporting
+  -> memory.context_for(task)           # short recall preview
+  -> memory.recent_outcomes(agent)      # feedback for that pack
+  -> orch._build_memory_index(agent)    # virtual paths, not a dumped blob
+  -> planner.plan(...)                  # LLM tool-use -> PlanCard
+  -> PlanCard.to_markdown()             # returned from advise_task
+       ↓
+  [host LLM executes with its own tools]
+       ↓
+  memory_view(path)                     # pulled on demand
+  memory_write("/notes/<topic>", ...)   # host breadcrumbs
+  report_outcome(session, success)      # closes the loop
 ```
+
+Recall is **pull-based**. The PlanCard no longer dumps a big `recalled_memory` string — it carries a compact index and the host fetches only what it needs, mirroring the Anthropic `memory_20250818` tool shape.
 
 ## Install
 
@@ -81,7 +92,7 @@ Requires Python 3.10+.
 
 ```bash
 pip install forgent              # core CLI + MCP server + status line
-pip install "forgent[all]"       # + optional LangGraph / CrewAI integrations
+pip install "forgent[all]"       # + optional integrations
 ```
 
 This puts `forgent`, `forgent-mcp`, and `forgent-statusline` on your `$PATH`.
@@ -117,30 +128,40 @@ claude mcp add forgent \
   -- $(which forgent-mcp)
 ```
 
-For Claude Desktop, edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add the orchestrator under `mcpServers` (snippet in the integration guide).
+For Claude Desktop, edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add the server under `mcpServers` (snippet in the integration guide).
 
 ## Usage
 
-### Run a task
+### Ask for a plan
 
 ```bash
-forgent run "design a Stripe webhook handler with idempotency and PCI-safe logging"
+forgent advise "design a Stripe webhook handler with idempotency and PCI-safe logging"
 ```
 
 The CLI will:
-1. Recall any relevant prior context from memory
-2. Show the routing decision (which agent, why, confidence)
-3. Print the agent's output
-4. Store everything for next time
+1. Route the task to the best curated pack (showing confidence + reasoning).
+2. Pull recent `OUTCOME` entries for that pack.
+3. Compile a PlanCard with steps, gotchas, success criteria, and a memory index.
+4. Print the markdown the host LLM should execute.
+
+### Close the loop
+
+After executing the plan, tell forgent how it went:
+
+```bash
+forgent outcome <session-id> --success --notes "shipped; idempotency key lived in Redis"
+```
+
+The next plan for the same pack will surface this in `past_outcomes`.
 
 ### Browse the registry
 
 ```bash
-forgent agents list                          # all 50+ curated agents
+forgent agents list                          # all 63 curated packs
 forgent agents list --category data-ai       # filter by category
 forgent agents list --ecosystem mcp          # filter by ecosystem
 forgent agents search "kubernetes security"  # keyword search
-forgent agents show backend-developer        # full system prompt
+forgent agents show backend-developer        # full knowledge pack body
 ```
 
 ### Inspect memory
@@ -148,14 +169,14 @@ forgent agents show backend-developer        # full system prompt
 ```bash
 forgent stats                          # overview
 forgent memory stats                   # what's stored
-forgent memory recall "stripe"         # what would the orchestrator remember
+forgent memory recall "stripe"         # what the planner would pull back
 forgent memory recall "auth" --type routing
 forgent memory forget                  # wipe (with confirmation)
 ```
 
-### Forge new subagents on demand
+### Forge new knowledge packs on demand
 
-This is the killer feature. When you hit a task that no curated agent handles well, ask the orchestrator to *grow* a new specialist for it:
+When no curated pack fits, grow one:
 
 ```bash
 forgent forge "write Solidity smart contracts with formal verification (Certora, Halmos)"
@@ -165,15 +186,7 @@ Or in any Claude environment with the MCP server registered:
 
 > "Use forge_agent to create a specialist for SAML 2.0 SSO integrations with Okta and Azure AD."
 
-Claude calls Claude. The new agent gets a real system prompt (400+ words, structured with checklists), a name, capabilities tags, and is persisted to `dynamic.yaml` + `registry/agents/claude_code/<name>.md`. From now on, every `list_agents`, `search_agents`, and `route_only` call sees it. The orchestrator is *literally getting smarter*.
-
-You can also enable auto-forging on `run`:
-
-```bash
-forgent run --auto-forge "design RFC-compliant LDAP query optimization for AD"
-```
-
-When the router's confidence is below 0.4, it forges a fresh specialist for the task class and uses it.
+The new pack gets a structured body, capability tags, and is persisted to `dynamic.yaml` + `registry/agents/claude_code/<name>.md`. From then on every `list_agents`, `search_agents`, and `route_only` call sees it.
 
 ### Vendor agent files for offline use
 
@@ -182,70 +195,67 @@ forgent vendor          # copies source .md files into the registry
 forgent vendor --force  # overwrite existing vendored files
 ```
 
-After vendoring, the `sources/` directory can be deleted — the registry is self-contained.
+After vendoring, `sources/` can be deleted — the registry is self-contained.
 
 ## Memory system
 
-The memory store (`src/forgent/memory/store.py`) is a SQLite database with an FTS5 virtual table for full-text recall. Every interaction lands in there:
+`src/forgent/memory/store.py` is a SQLite database with an FTS5 virtual table for full-text recall. Every interaction lands in there.
 
 | Memory type | What it is |
 |---|---|
 | `task` | the original user request |
 | `routing` | the router's decision and reasoning |
-| `agent_output` | what an agent produced |
-| `decision` | a checkpoint or branch decision |
-| `agent_doc` | curated agent definitions (for retrieval-aware routing) |
-| `note` | free-form notes from the system or user |
-| `artifact` | file paths or blobs produced by agents |
+| `plan` | PlanCards the planner produced |
+| `outcome` | post-execution success/failure + notes (v0.3 feedback loop) |
+| `agent_output` | what a host agent produced (when the host writes it back) |
+| `agent_doc` | curated pack definitions, for retrieval-aware routing |
+| `note` | free-form breadcrumbs from the host or user |
+| `artifact` | file paths or blobs |
 
-The orchestrator automatically calls `MemoryStore.context_for(task)` before every run, which returns a ranked context block (relevant outputs + relevant past routing decisions + institutional knowledge) ready to inject into the next agent's system prompt. This is why the system gets smarter over time — past routing decisions become few-shot examples for the router.
+v0.3 adds a **virtual path layer** over the same tables — paths are derived from `(type, source, tags)`, no schema change:
 
-## Adding agents
+| Path | Maps to |
+|---|---|
+| `/outcomes/<agent>/` | `OUTCOME` entries where `source=<agent>` |
+| `/plans/<agent>/` | `PLAN` entries where `source=<agent>` |
+| `/notes/<topic>/` | `NOTE` entries tagged `host-note` + `<topic>` |
+| `/sessions/<sid>/` | all entries for session `<sid>` |
+| `/agents/<name>` | the curated pack body |
+
+Before every plan, forgent composes a small memory index into the PlanCard and the host pulls paths on demand through `memory_view`. Past routing + outcomes become few-shot context for the next task.
+
+## Adding packs to the registry
 
 1. Find a strong candidate in `sources/` or any GitHub repo.
 2. Add an entry to `src/forgent/registry/catalog.yaml` with `name`, `ecosystem`, `category`, `capabilities`, `source_repo`, `source_path`, `description`.
-3. Run `forgent vendor` to copy the file into `src/forgent/registry/agents/`.
-4. Smoke test: `forgent run "task that should match this agent"`.
-
-## Adding ecosystems
-
-Implement `forgent.adapters.base.Adapter` and register it in `Orchestrator.__init__`. The adapter interface is intentionally minimal:
-
-```python
-class Adapter(ABC):
-    ecosystem: Ecosystem
-
-    async def run(self, agent: AgentSpec, task: str, context: str = "") -> AdapterResult: ...
-```
+3. Run `forgent vendor` to copy the body into `src/forgent/registry/agents/`.
+4. Smoke test: `forgent advise "task that should match this pack"`.
 
 ## Source repos used for curation
 
 | Repo | Stars | What was taken |
 |---|---|---|
-| [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) | high | ~45 agents across 10 categories — primary source |
-| [wshobson/agents](https://github.com/wshobson/agents) | 32.7k★ | plugin-style agents and orchestration patterns |
-| [0xfurai/claude-code-subagents](https://github.com/0xfurai/claude-code-subagents) | high | language/framework experts (138 single-file agents) |
-| [lastmile-ai/mcp-agent](https://github.com/lastmile-ai/mcp-agent) | growing | workflow patterns (router, orchestrator, parallel, evaluator-optimizer, swarm, deep-orchestrator) |
-| [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) | official | filesystem, fetch, and other reference MCP servers |
+| [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) | high | ~45 packs across 10 categories — primary source |
+| [wshobson/agents](https://github.com/wshobson/agents) | 32.7k★ | plugin-style packs and orchestration patterns |
+| [0xfurai/claude-code-subagents](https://github.com/0xfurai/claude-code-subagents) | high | language/framework experts (138 single-file packs) |
+| [lastmile-ai/mcp-agent](https://github.com/lastmile-ai/mcp-agent) | growing | workflow patterns (router, orchestrator, evaluator-optimizer, swarm) |
+| [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) | official | filesystem, fetch, reference MCP servers |
 | [github/github-mcp-server](https://github.com/github/github-mcp-server) | official | GitHub MCP server |
 
 ## Contributing
 
-This project is MIT-licensed and free to use forever. Contributions of any size are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for the quickstart (`make install && make test`).
+MIT-licensed and free to use forever. Contributions of any size are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for the quickstart (`make install && make test`).
 
-Ideas for high-value contributions:
-- New ecosystem adapters (AutoGen, Semantic Kernel, Bedrock Agents, Vellum)
-- Vector embedding column for the memory store (currently FTS5-only)
-- A web dashboard for browsing sessions and forged agents
-- Turning the catalog into a YAML registry that pulls fresh agents from upstream weekly
-- A `forge_from_examples` command that learns a new agent from a few input/output pairs
+High-value ideas:
+- Vector embedding column alongside FTS5 for hybrid retrieval.
+- A web dashboard for browsing sessions, plans, and forged packs.
+- `forge_from_examples` — synthesize a pack from a few input/output pairs.
+- Weekly upstream sync that refreshes the catalog from source repos.
 
 ### Funding model — coming in v0.2
 
-Forgent is experimenting with a contributor-reward model: a portion of donations will be pooled and shared with contributors who land merged PRs, distributed transparently via [Open Collective](https://opencollective.com). The infrastructure (GitHub Sponsors + Open Collective fiscal hosting) is being set up — the funding accounts will go live in v0.2, at which point this section will be replaced with the real signup links and contribution rules.
-
-Until then: contribute because you want the project to exist. Once funding is live, prior contributors will be retroactively credited.
+Forgent is experimenting with a contributor-reward model: a portion of donations pooled and shared with contributors who land merged PRs, distributed transparently via [Open Collective](https://opencollective.com). Accounts go live in v0.2; prior contributors will be retroactively credited.
 
 ## License
 
-MIT. Curated agent definitions retain their original licenses from the source repos.
+MIT. Curated pack definitions retain their original licenses from the source repos.
