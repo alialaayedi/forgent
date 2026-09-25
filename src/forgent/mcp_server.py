@@ -48,7 +48,14 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from forgent import __version__
+
+try:  # mcp >= 2 renamed FastMCP to MCPServer and added a version field
+    from mcp.server.mcpserver import MCPServer
+    _SERVER_META = {"version": __version__}
+except ImportError:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP as MCPServer
+    _SERVER_META = {}
 
 from forgent.config import ForgentConfig
 from forgent.memory import MemoryStore, MemoryType
@@ -56,34 +63,29 @@ from forgent.orchestrator import Orchestrator
 from forgent.registry.loader import Ecosystem, Registry
 from forgent import statusline as statusline_mod
 
-mcp = FastMCP(
+mcp = MCPServer(
     "forgent",
+    **_SERVER_META,
     instructions=(
-        "IMPORTANT -- You MUST call `advise_task` BEFORE starting any non-trivial "
-        "task (coding, debugging, architecture, review, refactoring, etc.). This "
-        "is not optional. Do it first, before reading files or writing code.\n\n"
-        "`advise_task` returns a PlanCard: concrete steps, gotchas, success "
-        "criteria, and a MEMORY INDEX pointing at relevant prior context. You "
-        "are NOT adopting a persona -- you are working from a curated plan that "
-        "forgent built for this specific task, with your own tools and context "
-        "window.\n\n"
-        "Memory is progressive, not dumped. The PlanCard lists memory paths "
-        "(e.g. /outcomes/backbone/, /notes/auth/) -- drill in with `memory_view` "
-        "only when a path looks relevant to the current step. This keeps your "
-        "context window lean and scales with memory size.\n\n"
-        "After calling `advise_task`, you MUST:\n"
-        "1. Display the plan card block to the user verbatim\n"
-        "2. Work through the plan's steps using your own tools\n"
-        "3. Treat the gotchas and success criteria as hard constraints\n"
-        "4. Call `memory_view` on paths from the index when you need prior context\n"
-        "5. Call `memory_write` to leave breadcrumbs at /notes/<topic>/ that "
-        "future sessions on the same project should know (e.g. locations, "
-        "conventions, gotchas you discovered)\n"
-        "6. When the task is complete (success OR failure), call `report_outcome` "
-        "with the session id from the card so routing improves over time\n\n"
-        "For multi-part tasks (e.g. a bug list), call `advise_task` once for the "
-        "overall task, then work through each part under the same plan. Call "
-        "`advise_task` again only if the task domain shifts significantly.\n\n"
+        "forgent is a planning layer. For non-trivial work (coding, debugging, "
+        "architecture, review, refactoring), call `advise_task` first. It returns "
+        "a PlanCard: concrete steps, gotchas, success criteria, and a memory "
+        "index of prior context for this project. The card is a plan, not a "
+        "persona; execute it with your own tools. Skip it for quick questions "
+        "and one-line edits.\n\n"
+        "Working from a card:\n"
+        "1. Show the plan card block to the user.\n"
+        "2. Work through the steps; treat gotchas and success criteria as "
+        "constraints.\n"
+        "3. Memory is progressive: call `memory_view` on an index path only when "
+        "it is relevant to the current step.\n"
+        "4. Use `memory_write` to leave breadcrumbs at /notes/<topic> that future "
+        "sessions on this project should know (file locations, conventions, "
+        "gotchas you discovered).\n"
+        "5. When the task ends, successfully or not, call `report_outcome` with "
+        "the card's session id so routing improves over time.\n\n"
+        "For a multi-part task, one `advise_task` call covers the whole thing; "
+        "call it again only if the domain shifts.\n\n"
         "Other tools: `search_agents`, `show_agent`, `forge_agent`, "
         "`recall_memory` (FTS search), `route_only`, `memory_stats`."
     ),

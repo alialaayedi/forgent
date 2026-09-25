@@ -339,7 +339,7 @@ class Orchestrator:
                 index.append(
                     MemoryPath(
                         path="/sessions/",
-                        label=f"{entry['count']} prior sessions -- browse the most recent",
+                        label=f"{entry['count']} prior session{'s' if entry['count'] != 1 else ''} -- browse the most recent",
                         count=entry["count"],
                     )
                 )

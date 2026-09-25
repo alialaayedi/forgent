@@ -1,0 +1,16 @@
+{
+  "name": "forgent",
+  "owner": {
+    "name": "Ali Al Aayedi",
+    "url": "https://github.com/alialaayedi"
+  },
+  "description": "forgent: planning, curated knowledge packs, and outcome-aware memory for Claude Code.",
+  "plugins": [
+    {
+      "name": "forgent",
+      "source": "./plugin",
+      "description": "Plans that learn: curated knowledge packs, PlanCards, and outcome-aware project memory for Claude Code.",
+      "version": "0.5.0"
+    }
+  ]
+}

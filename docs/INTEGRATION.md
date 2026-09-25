@@ -1,53 +1,36 @@
-# Integration guide — bring the orchestrator to every Claude environment
+# Integration guide: forgent in every Claude environment
 
-Once you've installed the orchestrator (see the install steps below), the same
-binary works across:
+One package, two surfaces:
 
-- **Claude Code** (any project on your machine)
-- **Claude Desktop** (macOS / Windows)
-- **Cursor**, **Zed**, **Windsurf**, and any other MCP-compatible client
-- **Any other machine** — copy the wheel, run `pipx install`, done
+- **Claude Code**: the `forgent@forgent` plugin (MCP server + skills + hooks), or a bare MCP server
+- **Claude Desktop, Cursor, Zed, Cline, Continue, Windsurf**, and any other MCP client: the `forgent-mcp` stdio server
 
 ## 1. Install once
 
 ```bash
-cd /path/to/forgent
-python3 -m build --wheel              # produces dist/forgent-0.1.0-py3-none-any.whl
-./scripts/install.sh                  # pipx-install + print registration commands
+pipx install forgent          # or: uv tool install forgent
 ```
 
-After this:
-- `orchestrator` is on your `$PATH` (any directory)
-- `forgent-mcp` is the MCP server entry point (any MCP client can spawn it)
+This puts `forgent`, `forgent-mcp`, and `forgent-statusline` on your `$PATH`.
 
-You can also distribute the `.whl` file to any other machine and just run
-`pipx install forgent-0.1.0-py3-none-any.whl`.
-
-## 2. Register with Claude Code
-
-Claude Code reads MCP servers from `~/.claude/mcp_settings.json` (or per-project
-`.mcp.json`). The CLI command below adds it for you:
+## 2. Claude Code
 
 ```bash
-# Pick up ANTHROPIC_API_KEY from your shell. Per-project memory means each
-# directory you cd into has its own DB at ./forgent.db.
-claude mcp add forgent \
-  --env ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  --env FORGENT_DB=./forgent.db \
-  -- $(which forgent-mcp)
+forgent setup
 ```
 
-Verify:
+The wizard detects existing installs, lets you choose the channel (`plugin` or `mcp`), scope (`user`, `project`, `local`), and hook profile, shows a preflight plan, and records what it changed so `forgent doctor`, `forgent repair`, and `forgent uninstall` stay safe. See the README's Install section for the non-interactive flags and the native `/plugin` commands.
 
-```bash
-claude mcp list                       # should show forgent
+Export `ANTHROPIC_API_KEY` in your shell profile. Claude Code passes its environment to the MCP server, so the key never needs to be written into `~/.claude.json`. Memory is per project: the server uses `./forgent.db` in the directory Claude Code was started from, unless `FORGENT_DB` is set.
+
+Verify in a new session:
+
+```
+/plugin list          # forgent@forgent enabled (plugin channel)
+/mcp                  # forgent connected
 ```
 
-In any Claude Code session you can now ask:
-
-> "Use the orchestrator to forge a specialist for writing Solana smart contracts, then run a task with it."
-
-Claude will call `forge_agent`, then `run_task`, automatically.
+Then ask for a plan with `/forgent:plan add a refund endpoint to the Stripe integration`, or just describe a non-trivial task; Claude calls `advise_task` on its own.
 
 ## 3. Register with Claude Desktop
 
@@ -74,21 +57,22 @@ Add (or merge into) the `mcpServers` block:
 }
 ```
 
-Restart Claude Desktop. The orchestrator's tools appear in the slash-tools
+Claude Desktop does not inherit your shell environment, so the key goes in the config here. Restart Claude Desktop. forgent's tools appear in the slash-tools
 menu and Claude can call them in any conversation.
 
 ## 4. Tools the MCP server exposes
 
 | Tool | What it does |
 |---|---|
-| `run_task(task, auto_forge=False)` | Full route → dispatch → remember. Set `auto_forge=true` to grow a new specialist if confidence is low. |
-| `forge_agent(task, name?, category?, force=False)` | Synthesize a brand-new specialist subagent for a task class. Persisted to disk and reused forever. |
-| `list_agents(ecosystem?, category?)` | Browse the curated registry. |
-| `search_agents(query, limit=10)` | Keyword search the registry. |
-| `show_agent(name)` | Full system prompt + metadata for one agent. |
-| `recall_memory(query, limit=5, type?)` | Query the project's memory store. |
-| `memory_stats()` | Counts of what's currently in memory. |
-| `route_only(task)` | Cheap dry-run — show which agent the orchestrator would pick. |
+| `advise_task(task, auto_forge=True, budget_ms?, budget_usd?)` | Route + plan; returns a PlanCard for the host to execute. Forges a new pack when routing confidence is low. |
+| `revise_plan(session_id, findings)` | Amend a PlanCard with mid-flight findings. |
+| `report_outcome(session_id, success, notes?)` | Close the loop; the next plan for the same pack sees it. |
+| `memory_view(path, limit=10)` | Pull-based recall over `/outcomes/`, `/notes/`, `/sessions/`, `/agents/`. |
+| `memory_write(path, content)` | Leave a breadcrumb note, usually under `/notes/<topic>`. |
+| `forge_agent(task, name?, category?, force=False)` | Synthesize a new knowledge pack for a task class. |
+| `list_agents(ecosystem?, category?)` / `search_agents(query)` / `show_agent(name)` | Browse the registry. |
+| `recall_memory(query, limit=5, type?)` / `memory_stats()` | Ad-hoc FTS recall and counts. |
+| `route_only(task)` | Just the routing decision, no plan. |
 
 ## 5. Per-project memory
 
@@ -101,7 +85,7 @@ To share memory across all projects on a machine, set
 
 ## 6. Forging new subagents — the killer feature
 
-The orchestrator can grow new specialists on demand. Two paths:
+forgent can grow new knowledge packs on demand. Two paths:
 
 **Explicit (recommended for stable results):**
 ```bash
@@ -116,30 +100,21 @@ The new agent is written to:
 
 It's available immediately to every future call, and it survives restarts.
 
-**Automatic (lower confidence triggers a forge):**
-```bash
-forgent run --auto-forge "design SAML 2.0 SSO integrations with Okta"
-```
-or in Claude:
-> "Run this task with auto_forge enabled."
+**Automatic (on by default):** `advise_task` and `forgent advise` forge a
+new pack when the router's confidence is below 0.4, then plan with it. Pass
+`--no-forge` (CLI) or `auto_forge=false` (MCP) to turn this off.
 
-If the router's confidence is below 0.4, the orchestrator spawns a fresh
-specialist for the task class and uses it. The specialist is then permanent.
-
-This is how the orchestrator gets new capabilities over time without anyone
+This is how forgent gets new capabilities over time without anyone
 hand-editing `catalog.yaml`.
 
 ## 7. Updating
 
 ```bash
-cd /path/to/forgent
-git pull             # if you've moved this to a git repo
-python3 -m build --wheel
-pipx install --force dist/forgent-*.whl
+pipx upgrade forgent       # or: uv tool upgrade forgent
+forgent setup              # re-run to update the plugin and hook profile
+forgent doctor
 ```
 
-Forged agents in `dynamic.yaml` and `agents/claude_code/` survive upgrades
-because they're inside the package directory — but if you reinstall from
-the wheel they'll be replaced. To keep them safe across reinstalls, copy
-`dynamic.yaml` to a backup before upgrading, or set
-`FORGENT_DYNAMIC_DIR` to an external path (planned for v0.2).
+Forged packs in `dynamic.yaml` and `agents/claude_code/` live inside the
+package directory, so a reinstall replaces them. Back up `dynamic.yaml`
+and the forged `.md` files before reinstalling.

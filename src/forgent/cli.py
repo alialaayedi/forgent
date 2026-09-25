@@ -1,6 +1,8 @@
 """Typer CLI — the user-facing entry point.
 
 Commands:
+    forgent setup                      — guided install into Claude Code
+    forgent doctor | repair | uninstall — manage what setup installed
     forgent advise "<task>"            — build a PlanCard (plan, gotchas, success)
     forgent agents list                — list curated agents
     forgent agents search "<query>"    — find agents by keyword
@@ -21,8 +23,10 @@ from typing import Optional
 
 import typer
 from dotenv import load_dotenv
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from forgent.config import ForgentConfig
 from forgent.memory import MemoryStore, MemoryType
@@ -33,7 +37,7 @@ from forgent.theme import COLORS, console
 
 load_dotenv()
 
-app = typer.Typer(help="forgent — grow your own AI subagents on demand. Routes any task to the best curated agent across Claude Code subagents, Python frameworks, and MCP servers.")
+app = typer.Typer(help="forgent — plans that learn. Routes any task to a curated knowledge pack and returns a PlanCard (steps, gotchas, success criteria, memory) for your coding agent to execute. Start with `forgent setup`.")
 agents_app = typer.Typer(help="Inspect the curated agent registry.")
 memory_app = typer.Typer(help="Inspect and query the memory store.")
 statusline_app = typer.Typer(help="Manage the optional forgent status line for Claude Code.")
@@ -58,65 +62,78 @@ def advise(
     via MCP) and then call `forgent outcome` to close the feedback loop.
     """
     orch = Orchestrator(db_path=_db_path())
-    console.print(Panel(task, title="[title]task[/title]", border_style=COLORS.border_strong))
+    with console.status("[muted]routing and planning...[/muted]", spinner="dots"):
+        plan = orch.advise(task, auto_forge=auto_forge)
+    console.print(_plan_card(plan))
 
-    plan = orch.advise(task, auto_forge=auto_forge)
 
-    # Routing pane
-    sup = ", ".join(plan.supporting) or "—"
-    mode_tag = " (heuristic)" if plan.heuristic else ""
-    console.print(
-        Panel(
-            f"[label]knowledge[/label]   [accent]{plan.primary_agent}[/accent]\n"
-            f"[label]supporting[/label]  [secondary]{sup}[/secondary]\n"
-            f"[label]confidence[/label]  [secondary]{plan.confidence:.2f}{mode_tag}[/secondary]\n"
-            f"[label]reason[/label]      [muted]{plan.routing_reasoning}[/muted]",
-            title="[subtitle]plan card[/subtitle]",
-            border_style=COLORS.border,
-        )
-    )
+def _section(body: Table, label: str, rows: list[Text]) -> None:
+    """A blank spacer, then rows with the dim label beside the first one."""
+    body.add_row("", "")
+    for i, row in enumerate(rows):
+        body.add_row(label if i == 0 else "", row)
+
+
+def _plan_card(plan) -> Panel:
+    """Render a PlanCard as one compact card. Model text is never parsed as markup."""
+    filled = round(max(0.0, min(1.0, plan.confidence)) * 10)
+    conf = Text()
+    conf.append("\u2588" * filled, style="accent")
+    conf.append("\u2591" * (10 - filled), style="muted")
+    conf.append(f"  {plan.confidence:.0%}", style="value")
+    if plan.heuristic:
+        conf.append("  \u00b7 heuristic", style="muted")
+    if plan.forged:
+        conf.append("  \u00b7 forged", style="muted")
+
+    pack = Text(plan.primary_agent, style="accent")
+    if plan.supporting:
+        pack.append("  + " + ", ".join(plan.supporting), style="secondary")
+
+    body = Table.grid(padding=(0, 2))
+    body.add_column(style="label", no_wrap=True, min_width=10)
+    body.add_column(ratio=1)
+    body.add_row("task", Text(plan.task, style="value"))
+    body.add_row("pack", pack)
+    body.add_row("confidence", conf)
+    body.add_row("why", Text(plan.routing_reasoning, style="muted"))
 
     if plan.knowledge_pack_summary:
-        console.print(
-            Panel(
-                plan.knowledge_pack_summary,
-                title="[subtitle]knowledge synthesis[/subtitle]",
-                border_style=COLORS.border,
-            )
-        )
-
+        _section(body, "knowledge", [Text(plan.knowledge_pack_summary, style="secondary")])
     if plan.steps:
-        steps_text = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan.steps))
-        console.print(
-            Panel(steps_text, title="[subtitle]plan[/subtitle]", border_style=COLORS.border)
-        )
-
+        _section(body, "plan", [
+            Text.assemble((f"{i}. ", "accent"), (s, "value"))
+            for i, s in enumerate(plan.steps, 1)
+        ])
     if plan.gotchas:
-        gotchas_text = "\n".join(f"- {g}" for g in plan.gotchas)
-        console.print(
-            Panel(gotchas_text, title="[subtitle]gotchas[/subtitle]", border_style=COLORS.accent)
-        )
-
+        _section(body, "gotchas", [
+            Text.assemble(("! ", "warning"), (g, "value")) for g in plan.gotchas
+        ])
     if plan.success_criteria:
-        sc_text = "\n".join(f"- {c}" for c in plan.success_criteria)
-        console.print(
-            Panel(sc_text, title="[subtitle]success criteria[/subtitle]", border_style=COLORS.border)
-        )
-
+        _section(body, "done when", [
+            Text.assemble(("\u25a1 ", "muted"), (c, "value")) for c in plan.success_criteria
+        ])
     if plan.past_outcomes:
-        outcomes_text = "\n".join(f"- {o}" for o in plan.past_outcomes)
-        console.print(
-            Panel(
-                outcomes_text,
-                title="[subtitle]past outcomes on similar tasks[/subtitle]",
-                border_style=COLORS.border,
-            )
-        )
+        _section(body, "past outcomes", [Text(o, style="muted") for o in plan.past_outcomes])
+    if plan.memory_index:
+        _section(body, "memory", [
+            Text.assemble((m.path, "accent2"), ("  " + m.label, "muted"))
+            for m in plan.memory_index
+        ])
 
-    console.print(f"[muted]session_id={plan.session_id}[/muted]")
-    console.print(
-        f"[muted]after execution, run:[/muted] [accent]forgent outcome {plan.session_id[:8]}"
-        f" --success/--failure \"notes\"[/accent]"
+    footer = Table.grid(padding=(0, 2))
+    footer.add_column(style="label", no_wrap=True, min_width=10)
+    footer.add_column(ratio=1)
+    footer.add_row("session", Text(plan.session_id, style="secondary"))
+    footer.add_row("close", Text(
+        f"forgent outcome {plan.session_id} --success --notes \"...\"", style="accent"
+    ))
+    return Panel(
+        Group(body, Text(""), footer),
+        title=Text("forgent \u00b7 plan card", style="title"),
+        title_align="left",
+        border_style=COLORS.border,
+        padding=(1, 2),
     )
 
 
@@ -481,7 +498,7 @@ def statusline_show():
     import os as _os
     ctx = {
         "cwd": _os.getcwd(),
-        "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"},
+        "model": {"id": "claude-opus-5-5", "display_name": "Opus 5.5"},
     }
     line = statusline_mod.render_line(ctx)
     console.print(line)
@@ -497,7 +514,7 @@ def statusline_preview(
     import time as _time
     ctx = {
         "cwd": os.getcwd(),
-        "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"},
+        "model": {"id": "claude-opus-5-5", "display_name": "Opus 5.5"},
         "session_id": "preview-session-abcdef",
         "cost": {"total_cost_usd": 0.27},
         "rate_limits": {"five_hour": {"used_percentage": 23.5}},
@@ -531,6 +548,174 @@ def statusline_status():
             border_style=COLORS.border,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Install lifecycle: setup / doctor / repair / uninstall (ECC-style)
+# ---------------------------------------------------------------------------
+
+_STATUS_GLYPH = {"ok": "[success]ok[/success]", "warn": "[warning]warn[/warning]", "fail": "[error]fail[/error]"}
+
+
+def _render_plan(plan, title: str) -> None:
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="muted", width=3)
+    table.add_column()
+    for i, action in enumerate(plan.actions, 1):
+        cmd = f"\n    [muted]$ claude {' '.join(action.argv[1:])}[/muted]" if action.argv else ""
+        table.add_row(f"{i}.", f"{action.summary}{cmd}")
+    if not plan.actions:
+        table.add_row("", "[muted]nothing to do[/muted]")
+    console.print(Panel(table, title=f"[title]{title}[/title]", border_style=COLORS.border, padding=(1, 2)))
+    for w in plan.warnings:
+        console.print(f"  [warning]![/warning] {w}")
+    for b in plan.blockers:
+        console.print(f"  [error]x[/error] {b}")
+
+
+def _render_results(results) -> bool:
+    ok = True
+    for r in results:
+        mark = "[success]done[/success]" if r.ok else "[error]failed[/error]"
+        console.print(f"  {mark}  {r.action.summary}" + (f"  [muted]{r.detail}[/muted]" if not r.ok and r.detail else ""))
+        ok = ok and r.ok
+    return ok
+
+
+@app.command()
+def setup(
+    channel: Optional[str] = typer.Option(None, "--channel", help="plugin (recommended: MCP + skills + hooks) | mcp (bare MCP server, lowest context)"),
+    scope: Optional[str] = typer.Option(None, "--scope", help="user | project | local"),
+    hooks: Optional[str] = typer.Option(None, "--hooks", help="Hook profile: off | minimal | standard"),
+    statusline: Optional[bool] = typer.Option(None, "--statusline/--no-statusline", help="Install the forgent status line"),
+    replace: bool = typer.Option(False, "--replace", help="Remove a conflicting forgent install (other channel/scope) instead of stopping"),
+    source: str = typer.Option("alialaayedi/forgent", "--source", help="Marketplace source (GitHub repo or local path)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan and exit without writing anything"),
+):
+    """Guided install into Claude Code. Re-run any time to update or change scope.
+
+    Detects what is already installed, shows every change before making it,
+    and records what it did so `forgent doctor`, `repair`, and `uninstall`
+    only touch forgent-owned items. Pass all options plus --yes for CI.
+    """
+    from rich.prompt import Confirm, Prompt
+    from forgent import installer
+
+    det = installer.detect()
+    interactive = not yes and not dry_run and os.isatty(0)
+
+    existing = []
+    if det.plugin_installs:
+        existing.append("plugin at " + ", ".join(str(p["scope"]) for p in det.plugin_installs))
+    if det.mcp_scope:
+        existing.append(f"bare MCP at {det.mcp_scope}")
+    console.print(
+        f"[accent]forgent setup[/accent] [muted]v{installer.__version__}[/muted]   "
+        + (f"[muted]found: {'; '.join(existing)}[/muted]" if existing else "[muted]no existing install found[/muted]")
+    )
+
+    if channel is None:
+        channel = Prompt.ask("  channel", choices=list(installer.CHANNELS), default="plugin", console=console) if interactive else "plugin"
+    if scope is None:
+        scope = Prompt.ask("  scope", choices=list(installer.SCOPES), default="user", console=console) if interactive else "user"
+    if hooks is None:
+        hooks = (Prompt.ask("  hook profile", choices=list(installer.HOOK_PROFILES), default="standard", console=console)
+                 if interactive and channel == "plugin" else ("standard" if channel == "plugin" else "off"))
+    if statusline is None:
+        statusline = Confirm.ask("  install status line", default=True, console=console) if interactive else False
+
+    try:
+        plan = installer.plan_install(det, channel=channel, scope=scope, hook_profile=hooks,
+                                      statusline=statusline, replace_existing=replace, source=source)
+    except ValueError as exc:
+        console.print(f"[error]{exc}[/error]")
+        raise typer.Exit(2)
+
+    _render_plan(plan, "preflight" + (" (dry run)" if dry_run else ""))
+    if plan.blockers:
+        raise typer.Exit(1)
+    if dry_run:
+        return
+    if interactive and not Confirm.ask("  apply these changes", default=True, console=console):
+        console.print("[muted]nothing changed[/muted]")
+        raise typer.Exit(0)
+
+    state = installer.InstallState.load()
+    if not _render_results(installer.execute(plan, state)):
+        console.print("\n[error]setup stopped at the first failure.[/error] Run [accent]forgent doctor[/accent] for details.")
+        raise typer.Exit(1)
+    console.print(
+        "\n[success]forgent is set up.[/success] Start a new Claude Code session"
+        + (", then run [accent]/plugin list[/accent] to confirm forgent@forgent is enabled." if channel == "plugin" else ".")
+    )
+
+
+@app.command()
+def doctor():
+    """Check the install: CLI, MCP SDK, API key, channel, stacking, drift, memory."""
+    from forgent import installer
+
+    det = installer.detect()
+    checks = installer.doctor(det, installer.InstallState.load())
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column(width=5)
+    table.add_column(style="label", width=15)
+    table.add_column()
+    for c in checks:
+        detail = c.detail + (f"\n[muted]fix: {c.fix}[/muted]" if c.fix and c.status != "ok" else "")
+        table.add_row(_STATUS_GLYPH[c.status], c.name, detail)
+    console.print(Panel(table, title="[title]forgent doctor[/title]", border_style=COLORS.border, padding=(1, 2)))
+    if any(c.status == "fail" for c in checks):
+        raise typer.Exit(1)
+
+
+@app.command()
+def repair(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be re-applied"),
+):
+    """Re-apply forgent-managed install entries that have gone missing."""
+    from forgent import installer
+
+    det = installer.detect()
+    state = installer.InstallState.load()
+    plan = installer.plan_repair(det, state)
+    _render_plan(plan, "repair" + (" (dry run)" if dry_run else ""))
+    if plan.blockers:
+        raise typer.Exit(1)
+    if dry_run or not plan.actions:
+        return
+    if not _render_results(installer.execute(plan, state)):
+        raise typer.Exit(1)
+
+
+@app.command()
+def uninstall(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+):
+    """Remove only what `forgent setup` installed. Memory databases are kept."""
+    from rich.prompt import Confirm
+    from forgent import installer
+
+    det = installer.detect()
+    state = installer.InstallState.load()
+    plan = installer.plan_uninstall(state, det)
+    _render_plan(plan, "uninstall" + (" (dry run)" if dry_run else ""))
+    if dry_run or not plan.actions:
+        return
+    if not yes and os.isatty(0) and not Confirm.ask("  remove these", default=False, console=console):
+        raise typer.Exit(0)
+    if not _render_results(installer.execute_uninstall(plan, state)):
+        raise typer.Exit(1)
+
+
+@app.command("hook", hidden=True)
+def hook(event: str = typer.Argument(..., help="session-start | stop")):
+    """Claude Code hook entry point used by the forgent plugin."""
+    from forgent import hooks as hooks_mod
+
+    raise typer.Exit(hooks_mod.run(event))
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,6 @@ unless `auto_forge=True` is set on `run_task`, or the user explicitly calls
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
+from forgent.llm import FORGE, FORGE_MODEL_DEFAULT, make_client, structured_call  # noqa: F401 (re-exported)
 from forgent.registry.loader import (
     PKG_DIR,
     AgentSpec,
@@ -41,8 +41,6 @@ if TYPE_CHECKING:
 
 DYNAMIC_CATALOG = PKG_DIR / "dynamic.yaml"
 DYNAMIC_AGENTS_DIR = PKG_DIR / "agents" / "claude_code"
-
-FORGE_MODEL_DEFAULT = "claude-opus-4-7"
 
 
 @dataclass
@@ -68,15 +66,9 @@ class AgentForge:
         api_key: str | None = None,
     ):
         self.registry = registry
-        self.model = model or os.environ.get("FORGENT_FORGE_MODEL", FORGE_MODEL_DEFAULT)
+        self.model = FORGE.model(model)
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self._client = None
-        if self.api_key:
-            try:
-                import anthropic  # noqa: WPS433
-                self._client = anthropic.Anthropic(api_key=self.api_key)
-            except Exception:
-                self._client = None
+        self._client = make_client(self.api_key)
 
     # ------------------------------------------------------------------
 
@@ -155,46 +147,38 @@ class AgentForge:
             f"## Existing agent names (do not duplicate)\n{existing_summary}\n\n"
             f"## Constraints\n"
             f"- name: {name or '(you pick — short, hyphen-separated, ends in -specialist or -expert if appropriate)'}\n"
-            f"- category: {category or '(you pick from: core-development, language-specialist, infrastructure, quality-security, data-ai, developer-experience, specialized, business-product, meta-orchestration, research-analysis, dynamic)'}\n\n"
-            "Return your design by calling the `submit_agent` tool."
+            f"- category: {category or '(you pick from: core-development, language-specialist, infrastructure, quality-security, data-ai, developer-experience, specialized, business-product, meta-orchestration, research-analysis, dynamic)'}"
         )
 
-        tool = {
-            "name": "submit_agent",
-            "description": "Submit the forged agent definition.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "short hyphen-separated name"},
-                    "category": {"type": "string"},
-                    "description": {"type": "string", "description": "one-sentence trigger description, used by routing"},
-                    "capabilities": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "3-8 short capability tags (e.g. 'graphql', 'subscriptions', 'federation')",
-                    },
-                    "model": {"type": "string", "enum": ["opus", "sonnet", "haiku"], "description": "model tier"},
-                    "system_prompt": {
-                        "type": "string",
-                        "description": "the full system prompt for this specialist — at least 400 words, structured with markdown headers",
-                    },
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "short hyphen-separated name"},
+                "category": {"type": "string"},
+                "description": {"type": "string", "description": "one-sentence trigger description, used by routing"},
+                "capabilities": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "3-8 short capability tags (e.g. 'graphql', 'subscriptions', 'federation')",
                 },
-                "required": ["name", "category", "description", "capabilities", "system_prompt"],
+                "model": {"type": "string", "enum": ["opus", "sonnet", "haiku"], "description": "model tier"},
+                "system_prompt": {
+                    "type": "string",
+                    "description": "the full system prompt for this specialist — at least 400 words, structured with markdown headers",
+                },
             },
+            "required": ["name", "category", "description", "capabilities", "model", "system_prompt"],
         }
 
-        resp = self._client.messages.create(
+        return structured_call(
+            self._client,
+            role=FORGE,
             model=self.model,
-            max_tokens=4096,
             system=system,
-            messages=[{"role": "user", "content": user}],
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "submit_agent"},
+            user=user,
+            schema=schema,
+            max_tokens=16000,
         )
-        for block in resp.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == "submit_agent":
-                return block.input or {}
-        raise RuntimeError("AgentForge LLM did not return a tool_use block")
 
     # ------------------------------------------------------------------
     # Persistence

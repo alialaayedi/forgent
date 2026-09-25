@@ -1,6 +1,6 @@
 [project]
 name = "forgent"
-version = "0.4.0"
+version = "0.5.0"
 description = "Planning + knowledge layer for AI coding agents. Routes any task to the best of 60+ curated specialists, returns a structured PlanCard (steps, gotchas, success criteria) with progressive memory, and ships an optional Claude Code status line."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,12 +41,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "anthropic>=0.40.0",
+    "anthropic>=0.92.0,<2",
     "pyyaml>=6.0",
     "rich>=13.7.0",
     "typer>=0.12.0",
     "python-dotenv>=1.0.0",
-    "mcp>=1.0.0",
+    "mcp>=1.2.0,<3",
 ]
 
 [project.urls]

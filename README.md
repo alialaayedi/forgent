@@ -6,7 +6,7 @@
 
 > **Plans that learn.** A planning + knowledge layer for AI coding agents. Give it a task; it routes to the best curated specialist out of 60+ knowledge packs, pulls relevant past outcomes from memory, and returns a structured **PlanCard** — steps, gotchas, success criteria, and a memory index — for your host LLM to execute with its own tools.
 >
-> Ships as a single stdio MCP server. Drop it into Claude Code, Claude Desktop, Cursor, Zed, or any MCP client; every session gets the same `advise_task` / `report_outcome` / `memory_view` surface.
+> Ships as a Claude Code plugin (MCP server + skills + hooks) and as a plain stdio MCP server for Claude Desktop, Cursor, Zed, or any MCP client. Every session gets the same `advise_task` / `report_outcome` / `memory_view` surface. Start with `pipx install forgent && forgent setup`.
 
 <p align="center">
   <a href="https://pypi.org/project/forgent/"><img src="https://img.shields.io/pypi/v/forgent?style=flat-square&color=eb5160&labelColor=071013" alt="PyPI"/></a>
@@ -44,7 +44,8 @@ v1 of forgent ran agents itself via per-ecosystem adapters, each with its own to
 - **SQLite + FTS5 memory** with an `OUTCOME` type that closes the feedback loop. `record_outcome(session, success, notes, agent)` after a task; the next plan for the same domain surfaces that history as gotchas. Zero external dependencies.
 - **Virtual-path memory surface** (v0.3, mirrors Anthropic's `memory_20250818` protocol). The PlanCard carries paths like `/outcomes/<agent>/`, `/notes/<topic>/`, `/sessions/<sid>/`; the host pulls only what it needs via `memory_view(path)` and leaves breadcrumbs via `memory_write`.
 - **AgentForge** — synthesizes brand-new knowledge packs on demand using Claude when no curated pack fits. Forged packs are persisted to `dynamic.yaml` + `registry/agents/claude_code/<name>.md` and appear in every future routing call.
-- **Stdio MCP server** — the 12 tools below, so every Claude environment calls the same planning surface.
+- **Claude Code plugin + stdio MCP server** — the 12 tools below, plus `/forgent:plan`, `/forgent:outcome`, and hooks that keep the outcome loop closed.
+- **Guided install lifecycle** — `forgent setup`, `doctor`, `repair`, `uninstall`, with an install-state manifest so nothing outside forgent is touched.
 - **Typer-based CLI** for advising on tasks, recording outcomes, browsing the registry, forging packs, and inspecting memory.
 
 ### MCP tools exposed
@@ -72,7 +73,7 @@ task
   -> memory.context_for(task)           # short recall preview
   -> memory.recent_outcomes(agent)      # feedback for that pack
   -> orch._build_memory_index(agent)    # virtual paths, not a dumped blob
-  -> planner.plan(...)                  # LLM tool-use -> PlanCard
+  -> planner.plan(...)                  # structured output -> PlanCard
   -> PlanCard.to_markdown()             # returned from advise_task
        ↓
   [host LLM executes with its own tools]
@@ -86,22 +87,105 @@ Recall is **pull-based**. The PlanCard no longer dumps a big `recalled_memory` s
 
 ## Install
 
-Requires Python 3.10+.
+forgent needs Python 3.10+ and, for Claude Code, Claude Code 2.1+ on your `PATH`. The Claude Code plugin also needs either [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io) (the plugin launches `forgent-mcp` through whichever it finds).
 
-### From PyPI (recommended)
-
-```bash
-pip install forgent              # core CLI + MCP server + status line
-pip install "forgent[all]"       # + optional integrations
-```
-
-This puts `forgent`, `forgent-mcp`, and `forgent-statusline` on your `$PATH`.
-
-Prefer an isolated install? [`pipx`](https://pipx.pypa.io) is the cleanest path:
+### Recommended: guided setup
 
 ```bash
-pipx install forgent
+pipx install forgent        # or: uv tool install forgent
+forgent setup
 ```
+
+`forgent setup` looks at what is already installed, asks four questions (channel, scope, hook profile, status line), prints a preflight plan of every change, and only then writes. Pick **Global user** scope and the **standard** hook profile for a typical personal setup, then start a new Claude Code session and run `/plugin list` to confirm `forgent@forgent` is enabled.
+
+Re-run the same command whenever you want to update forgent, change scope, or change the hook profile. For automation, make every choice explicit:
+
+```bash
+forgent setup --channel plugin --scope user --hooks standard --no-statusline --yes
+forgent setup --channel plugin --scope project --dry-run     # preview only
+```
+
+`scripts/install.sh` does both steps (install with uv or pipx, then `forgent setup`) if you prefer one command.
+
+### Or: native plugin commands
+
+Inside Claude Code:
+
+```
+/plugin marketplace add alialaayedi/forgent
+/plugin install forgent@forgent
+```
+
+Or declaratively in `~/.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "forgent": { "source": { "source": "github", "repo": "alialaayedi/forgent" } }
+  },
+  "enabledPlugins": { "forgent@forgent": true }
+}
+```
+
+The plugin installs the MCP server, three skills, and the hooks. If you install this way, stop there; do not also run `claude mcp add`.
+
+### What the plugin adds
+
+| Component | What it does |
+|---|---|
+| MCP server | The 12 tools listed above (`advise_task`, `report_outcome`, `memory_view`, ...) |
+| `/forgent:plan <task>` | Get a PlanCard, show it, execute it, report the outcome |
+| `/forgent:outcome [success\|failure] [note]` | Close the loop on the current forgent session |
+| `/forgent:configure` | Run `forgent doctor` / `forgent setup` from inside Claude Code |
+| SessionStart hook | Adds one short line about this project's forgent memory (capped at 700 chars) |
+| Stop hook | Reminds the agent once to call `report_outcome` when a planned session has none |
+
+Hook profiles, set by `forgent setup --hooks` or `FORGENT_HOOK_PROFILE`:
+
+| Profile | Runs |
+|---|---|
+| `off` | nothing |
+| `minimal` | SessionStart note only |
+| `standard` (default) | SessionStart note + one Stop reminder per open session |
+
+### Pick one path only
+
+Choose one install channel per Claude Code scope:
+
+- **Recommended:** the plugin (`forgent setup`, or the `/plugin` commands).
+- **Low-context:** a bare MCP server with no skills and no hooks: `forgent setup --channel mcp`.
+- **Avoid:** plugin + bare MCP in the same scope. Every tool shows up twice. `forgent setup` warns about this, and `--replace` removes the other channel for you.
+
+### API key and models
+
+Export `ANTHROPIC_API_KEY` in your shell profile; Claude Code passes it to the MCP server. forgent never writes the key anywhere. Without a key, forgent still works in heuristic mode (PlanCards are marked `heuristic`).
+
+| Role | Default model | Effort | Override |
+|---|---|---|---|
+| Router | `claude-sonnet-5` | `low` | `FORGENT_ROUTER_MODEL`, `FORGENT_ROUTER_EFFORT` |
+| Planner | `claude-opus-5-5` | `medium` | `FORGENT_PLANNER_MODEL`, `FORGENT_PLANNER_EFFORT` |
+| Forge | `claude-opus-5-5` | `high` | `FORGENT_FORGE_MODEL`, `FORGENT_FORGE_EFFORT` |
+| Fallback | `claude-opus-5` | role's effort | `FORGENT_FALLBACK_MODEL` (retried once when a request is declined) |
+
+All three calls use structured outputs, so any current Claude model ID works as an override.
+
+### Other editors
+
+Cursor, Cline, Roo, Zed, Continue, and Claude Desktop use the bare MCP server. Print the exact snippet for yours with `forgent setup-ide <editor>`; see [docs/INTEGRATION.md](docs/INTEGRATION.md).
+
+### Doctor, repair, uninstall
+
+`forgent setup` records everything it installs in `~/.forgent/install-state.json`, so the lifecycle commands only touch forgent-owned items:
+
+```bash
+forgent doctor                 # CLI, MCP SDK, key, channel, stacking, drift, memory DB
+forgent repair --dry-run       # re-apply recorded entries that went missing
+forgent repair
+forgent uninstall --dry-run    # list exactly what would be removed
+forgent uninstall
+```
+
+Uninstall never deletes project memory (`forgent.db`), and it leaves alone any forgent registration it did not create (it tells you how to remove those by hand). If you stacked several install methods, run `forgent uninstall`, remove leftovers it reports, then install once with a single path.
 
 ### From source (development)
 
@@ -109,26 +193,12 @@ pipx install forgent
 git clone https://github.com/alialaayedi/forgent.git
 cd forgent
 make install                          # creates .venv, installs editable, fixes macOS .pth quirk
-make vendor                           # copies source agent files into the registry
-make test                             # runs the smoke suite
+make test
 
 cp .env.example .env                  # add ANTHROPIC_API_KEY
 .venv/bin/forgent advise "hello"
+claude --plugin-dir ./plugin          # try the plugin from this checkout for one session
 ```
-
-### Register with every Claude environment
-
-See **[docs/INTEGRATION.md](docs/INTEGRATION.md)** for the full guide. Short version:
-
-```bash
-# Claude Code (any project on your machine)
-claude mcp add forgent \
-  --env ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  --env FORGENT_DB=./forgent.db \
-  -- $(which forgent-mcp)
-```
-
-For Claude Desktop, edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add the server under `mcpServers` (snippet in the integration guide).
 
 ## Usage
 

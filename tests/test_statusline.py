@@ -87,12 +87,12 @@ def test_render_line_populated_includes_pack_and_wins(monkeypatch, tmp_path):
     monkeypatch.setenv("FORGENT_DB", str(db))
     monkeypatch.setenv("COLUMNS", "200")  # wide enough to keep all segments
     line = statusline_mod.render_line(
-        {"cwd": str(tmp_path), "model": {"id": "claude-opus-4-7", "display_name": "Opus 4.7"}}
+        {"cwd": str(tmp_path), "model": {"id": "claude-opus-5-5", "display_name": "Opus 5.5"}}
     )
     assert "python-pro" in line
     assert "3W/1L" in line  # compact wins/losses format
     assert "1 note" in line  # singular form
-    assert "Opus 4.7 (1M)" in line  # model with context window size
+    assert "Opus 5.5 (1M)" in line  # model with context window size
 
 
 def test_render_line_never_raises(monkeypatch, tmp_path):
@@ -130,7 +130,7 @@ def test_context_label_parses_transcript(monkeypatch, tmp_path):
     line = statusline_mod.render_line(
         {
             "cwd": str(tmp_path),
-            "model": {"id": "claude-opus-4-7"},
+            "model": {"id": "claude-opus-5-5"},
             "transcript_path": str(tx),
         }
     )
@@ -161,7 +161,7 @@ def test_context_label_flags_near_compact(monkeypatch, tmp_path):
     monkeypatch.setenv("FORGENT_COMPACT_PCT", "60")
     monkeypatch.setenv("COLUMNS", "200")
     line = statusline_mod.render_line(
-        {"cwd": str(tmp_path), "model": {"id": "claude-opus-4-7"}, "transcript_path": str(tx)}
+        {"cwd": str(tmp_path), "model": {"id": "claude-opus-5-5"}, "transcript_path": str(tx)}
     )
     # 92% >= 60% threshold -> should surface "compact now"
     assert "compact now" in line
@@ -171,7 +171,7 @@ def test_context_label_absent_when_no_transcript(monkeypatch, tmp_path):
     _plain_env(monkeypatch)
     monkeypatch.setenv("FORGENT_DB", str(tmp_path / "empty.db"))
     line = statusline_mod.render_line(
-        {"cwd": str(tmp_path), "model": {"id": "claude-opus-4-7"}}
+        {"cwd": str(tmp_path), "model": {"id": "claude-opus-5-5"}}
     )
     assert "ctx" not in line
 

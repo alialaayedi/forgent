@@ -11,6 +11,7 @@ from this. Nothing else should walk `sources/` at runtime.
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from enum import Enum
@@ -74,17 +75,38 @@ class AgentSpec:
         return body
 
     def matches(self, query: str) -> int:
-        """Cheap relevance score — used as a fallback when there's no LLM router."""
-        q = query.lower()
+        """Cheap relevance score -- used as a fallback when there's no LLM router.
+
+        Matches whole words, not substrings, so "html" no longer fires on any
+        task that happens to contain those letters.
+        """
+        words = set(_tokens(query))
+        if not words:
+            return 0
         score = 0
-        if self.name.lower() in q:
+        name_parts = set(_tokens(self.name))
+        if name_parts and name_parts <= words:
             score += 10
         for cap in self.capabilities:
-            if cap.lower() in q:
+            parts = set(_tokens(cap))
+            if parts and parts <= words:
                 score += 3
-        if any(word in q for word in self.description.lower().split()):
-            score += 1
+        score += len(words & set(_tokens(self.description)))
         return score
+
+
+_STOPWORDS = frozenset(
+    "a an and are as at be by for from how in into is it of on or the to with "
+    "add build make create fix use using new my our your this that".split()
+)
+
+
+def _tokens(text: str) -> list[str]:
+    """Lowercase word tokens; splits on punctuation, `_` and `-`; drops stop words."""
+    return [
+        w for w in re.split(r"[^a-z0-9+#]+", text.lower())
+        if len(w) > 1 and w not in _STOPWORDS
+    ]
 
 
 class Registry:

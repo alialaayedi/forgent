@@ -6,7 +6,7 @@ The router takes a free-form task and returns a `RoutingDecision`:
     * mode  — single | sequential | parallel | evaluator-optimizer
     * reasoning — why this routing was chosen (stored in memory)
 
-It uses the Anthropic API with structured tool-use to force a clean JSON
+It uses the Anthropic API with structured outputs to get a clean JSON
 response. If `ANTHROPIC_API_KEY` is missing, it gracefully falls back to a
 keyword-scoring heuristic so the orchestrator still works offline.
 
@@ -16,7 +16,6 @@ context, so the router learns from prior choices over time.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -25,7 +24,8 @@ if TYPE_CHECKING:
     from forgent.memory.store import MemoryStore
     from forgent.registry.loader import Registry, AgentSpec
 
-ROUTER_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
+from forgent.registry.loader import _tokens
+from forgent.llm import ROUTER, ROUTER_MODEL_DEFAULT, make_client, structured_call  # noqa: F401 (re-exported)
 
 
 @dataclass
@@ -76,15 +76,9 @@ class Router:
     ):
         self.registry = registry
         self.memory = memory
-        self.model = model or os.environ.get("FORGENT_ROUTER_MODEL", ROUTER_MODEL_DEFAULT)
+        self.model = ROUTER.model(model)
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self._client = None
-        if self.api_key:
-            try:
-                import anthropic  # noqa: WPS433
-                self._client = anthropic.Anthropic(api_key=self.api_key)
-            except Exception:
-                self._client = None
+        self._client = make_client(self.api_key)
 
     # ------------------------------------------------------------------
 
@@ -131,88 +125,78 @@ class Router:
         user = (
             f"## Task\n{task}\n\n"
             f"## Past routing decisions for similar tasks\n{memory_ctx or '(none yet)'}\n\n"
-            f"## Available agents\n{catalog}\n\n"
-            "Return your answer by calling the `route` tool."
+            f"## Available agents\n{catalog}"
         )
 
-        tool = {
-            "name": "route",
-            "description": "Submit the routing decision",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "primary": {"type": "string", "description": "Name of the primary agent (must exist in the catalog)"},
-                    "supporting": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Names of 0-3 supporting agents",
-                    },
-                    "mode": {
-                        "type": "string",
-                        "enum": ["single", "sequential", "parallel", "evaluator-optimizer"],
-                    },
-                    "reasoning": {"type": "string", "description": "Why you picked these agents"},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "alternates": {
-                        "type": "array",
-                        "maxItems": 3,
-                        "description": "Top-3 runners-up (other strong candidates you considered but didn't pick as primary). Surface your decision process to the user.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string"},
-                                "score": {"type": "number", "minimum": 0, "maximum": 1, "description": "How good a fit this would have been, 0-1"},
-                                "reasoning": {"type": "string", "description": "One-line tradeoff vs the primary"},
-                            },
-                            "required": ["name", "score", "reasoning"],
+        schema = {
+            "type": "object",
+            "properties": {
+                "primary": {"type": "string", "description": "Name of the primary agent (must exist in the catalog)"},
+                "supporting": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Names of 0-3 supporting agents",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["single", "sequential", "parallel", "evaluator-optimizer"],
+                },
+                "reasoning": {"type": "string", "description": "Why you picked these agents"},
+                "confidence": {"type": "number", "description": "0-1 confidence in the primary pick"},
+                "alternates": {
+                    "type": "array",
+                    "description": "Up to 3 runners-up (strong candidates you considered but didn't pick as primary). Surfaces your decision process to the user.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "score": {"type": "number", "description": "How good a fit this would have been, 0-1"},
+                            "reasoning": {"type": "string", "description": "One-line tradeoff vs the primary"},
                         },
+                        "required": ["name", "score", "reasoning"],
                     },
                 },
-                "required": ["primary", "mode", "reasoning", "confidence"],
             },
+            "required": ["primary", "supporting", "mode", "reasoning", "confidence", "alternates"],
         }
 
-        resp = self._client.messages.create(
+        payload = structured_call(
+            self._client,
+            role=ROUTER,
             model=self.model,
-            max_tokens=1024,
             system=system,
-            messages=[{"role": "user", "content": user}],
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "route"},
+            user=user,
+            schema=schema,
+            max_tokens=8000,
         )
-        for block in resp.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == "route":
-                payload = block.input or {}
-                primary = payload.get("primary", "")
-                if not self.registry.get(primary):
-                    # Hallucinated name — degrade to heuristic but keep the LLM's intent
-                    fallback = self._heuristic_route(task)
-                    fallback.reasoning = f"LLM chose unknown agent '{primary}'; fell back. Original reasoning: {payload.get('reasoning', '')}"
-                    return fallback
-                alternates_payload = payload.get("alternates") or []
-                alternates: list[RoutingAlternate] = []
-                for a in alternates_payload[:3]:
-                    if not isinstance(a, dict):
-                        continue
-                    name = a.get("name", "")
-                    if not self.registry.get(name):
-                        continue  # drop hallucinated names
-                    alternates.append(
-                        RoutingAlternate(
-                            name=name,
-                            score=float(a.get("score", 0.5)),
-                            reasoning=str(a.get("reasoning", "")),
-                        )
-                    )
-                return RoutingDecision(
-                    primary=primary,
-                    supporting=[s for s in payload.get("supporting", []) if self.registry.get(s)],
-                    mode=payload.get("mode", "single"),
-                    reasoning=payload.get("reasoning", ""),
-                    confidence=float(payload.get("confidence", 0.5)),
-                    alternates=alternates,
+        primary = payload.get("primary", "")
+        if not self.registry.get(primary):
+            # Hallucinated name — degrade to heuristic but keep the LLM's intent
+            fallback = self._heuristic_route(task)
+            fallback.reasoning = f"LLM chose unknown agent '{primary}'; fell back. Original reasoning: {payload.get('reasoning', '')}"
+            return fallback
+        alternates: list[RoutingAlternate] = []
+        for a in (payload.get("alternates") or [])[:3]:
+            if not isinstance(a, dict):
+                continue
+            name = a.get("name", "")
+            if not self.registry.get(name):
+                continue  # drop hallucinated names
+            alternates.append(
+                RoutingAlternate(
+                    name=name,
+                    score=_unit(a.get("score", 0.5)),
+                    reasoning=str(a.get("reasoning", "")),
                 )
-        raise RuntimeError("Router LLM did not return a tool_use block")
+            )
+        return RoutingDecision(
+            primary=primary,
+            supporting=[s for s in payload.get("supporting", []) if self.registry.get(s)][:3],
+            mode=payload.get("mode", "single"),
+            reasoning=payload.get("reasoning", ""),
+            confidence=_unit(payload.get("confidence", 0.5)),
+            alternates=alternates,
+        )
 
     # ------------------------------------------------------------------
     # Heuristic fallback
@@ -241,7 +225,7 @@ class Router:
             RoutingAlternate(
                 name=a.name,
                 score=round(a.matches(task) / max_score, 3),
-                reasoning=f"Matches capabilities: {', '.join(a.capabilities[:3])}",
+                reasoning=_heuristic_reason(a, task),
             )
             for a in ranked[1:4]
         ]
@@ -249,7 +233,7 @@ class Router:
             primary=primary.name,
             supporting=supporting,
             mode="single" if not supporting else "parallel",
-            reasoning=f"Heuristic match on capabilities: {', '.join(primary.capabilities[:3])}",
+            reasoning=_heuristic_reason(primary, task),
             confidence=0.5,
             alternates=alternates,
         )
@@ -289,3 +273,20 @@ class Router:
             lines.append("Prior outcomes (factor these in -- prefer agents that succeeded):")
             lines.extend(f"- {e.content}" for e in outcome_entries)
         return "\n".join(lines)
+
+
+def _unit(value: object) -> float:
+    """Clamp a model-supplied score to 0..1 (structured outputs can't enforce ranges)."""
+    try:
+        return min(1.0, max(0.0, float(value)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.5
+
+
+def _heuristic_reason(agent: AgentSpec, task: str) -> str:
+    """Name the capabilities that actually matched, not just the first few."""
+    words = set(_tokens(task))
+    hit = [c for c in agent.capabilities if set(_tokens(c)) and set(_tokens(c)) <= words]
+    if hit:
+        return f"Heuristic match on capabilities: {', '.join(hit[:4])}"
+    return f"Heuristic keyword match on: {agent.description[:80]}"

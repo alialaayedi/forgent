@@ -120,10 +120,10 @@ def test_plan_card_to_markdown_has_required_sections(tmp_path):
     md = plan.to_markdown()
 
     # Assignment block must be present and renderable
-    assert "forgent -- plan card" in md
+    assert "forgent · plan card" in md
     assert "```" in md
     # Host instructions
-    assert "DISPLAY THE BLOCK ABOVE TO THE USER" in md
+    assert "## How to use this card" in md
     assert "report_outcome" in md
     # v0.3: memory-tool-style instructions
     assert "memory_view" in md
@@ -367,3 +367,21 @@ def test_mcp_server_exposes_advise_and_outcome_tools():
     assert "recall_memory" in names
     # v1 tools that should be gone
     assert "run_task" not in names
+
+
+def test_heuristic_matcher_uses_whole_words():
+    """Substring matching used to send payment tasks to mcp-fetch ("html" in "...")."""
+    reg = Registry.load()
+    top = reg.search("add a refund endpoint to the Stripe webhook service", 1)
+    assert top and top[0].name == "payment-integration"
+    assert reg.get("mcp-fetch").matches("add a refund endpoint to the Stripe webhook service") == 0
+
+
+def test_outcome_content_carries_task_for_recall(tmp_path):
+    from forgent.memory import MemoryStore
+
+    mem = MemoryStore(tmp_path / "m.db")
+    sid = mem.start_session("migrate the billing cron to celery")
+    entry = mem.record_outcome(sid, success=True, notes="ok", agent_name="python-pro")
+    assert "outcome=success" in entry.content
+    assert "celery" in entry.content

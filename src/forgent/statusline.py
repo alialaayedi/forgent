@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -341,14 +342,28 @@ def _git_info(cwd: Path) -> tuple[str, bool, int, int]:
 # now ships `context_window.context_window_size`, so prefer that; this
 # dict is the fallback for older CC versions.
 _MODEL_CONTEXT_TOKENS: dict[str, int] = {
+    "claude-fable-5-1": 1_000_000,
+    "claude-fable-5": 1_000_000,
+    "claude-opus-5-5": 1_000_000,
+    "claude-opus-5": 1_000_000,
+    "claude-opus-4-8": 1_000_000,
     "claude-opus-4-7": 1_000_000,
     "claude-opus-4-6": 1_000_000,
     "claude-opus-4-5": 200_000,
+    "claude-sonnet-5": 1_000_000,
     "claude-sonnet-4-6": 1_000_000,
     "claude-sonnet-4-5": 200_000,
     "claude-haiku-4-5": 200_000,
-    "claude-haiku-4-5-20251001": 200_000,
 }
+
+
+def _model_context_tokens(model_id: str) -> int:
+    """Look up a model's context size, tolerating `[1m]` tags and date suffixes."""
+    if "[1m]" in model_id:
+        return 1_000_000
+    mid = re.sub(r"\[.*?\]$", "", model_id.strip())
+    mid = re.sub(r"-\d{8}$", "", mid)
+    return _MODEL_CONTEXT_TOKENS.get(mid, 200_000)
 
 
 def _compact_threshold_pct() -> int:
@@ -398,7 +413,7 @@ def _context_cap(ctx: dict[str, Any]) -> int:
         mid = str(model.get("id") or "")
     elif isinstance(model, str):
         mid = model
-    return _MODEL_CONTEXT_TOKENS.get(mid, 200_000)
+    return _model_context_tokens(mid)
 
 
 def _transcript_tokens(ctx: dict[str, Any]) -> int:

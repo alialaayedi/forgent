@@ -173,6 +173,21 @@ class MemoryStore:
         )
         self._conn.commit()
 
+    def open_sessions(self, since: float) -> list[dict[str, Any]]:
+        """Sessions created after `since` (epoch s) that have no OUTCOME yet.
+
+        Used by the Stop hook to remind the host to call report_outcome.
+        Only sessions still in status 'open' are returned.
+        """
+        rows = self._conn.execute(
+            "SELECT s.id, s.task, s.created_at FROM sessions s "
+            "WHERE s.created_at >= ? AND s.status = 'open' AND NOT EXISTS ("
+            "  SELECT 1 FROM memories m WHERE m.session_id = s.id AND m.type = ?"
+            ") ORDER BY s.created_at DESC",
+            (since, MemoryType.OUTCOME.value),
+        ).fetchall()
+        return [{"id": r[0], "task": r[1], "created_at": r[2]} for r in rows]
+
     # ----- writes -----------------------------------------------------------
 
     def remember(
@@ -252,6 +267,13 @@ class MemoryStore:
         content = f"outcome={status}"
         if agent_name:
             content += f" agent={agent_name}"
+        # Carry the task text so keyword recall finds this outcome for related
+        # tasks, even when the router picks a different pack next time.
+        row = self._conn.execute(
+            "SELECT task FROM sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        if row and row["task"]:
+            content += f" task={row['task'][:200]}"
         if notes:
             content += f" notes={notes}"
         tags = ["outcome", status]

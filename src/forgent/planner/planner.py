@@ -7,11 +7,11 @@ v0.3 adds **progressive memory**: instead of dumping a big recalled-memory
 string into every PlanCard, the planner returns a **memory index** -- a
 handful of virtual paths (e.g. `/outcomes/backbone/`, `/notes/auth/`) the
 host can browse on demand via the `memory_view` MCP tool. Shape inspired
-by Anthropic's memory_20250818 tool protocol; it lets Opus 4.7's long-
-horizon agentic strengths drill into only what's relevant to the current
-step, instead of parsing a wall of context up front.
+by Anthropic's memory_20250818 tool protocol; it lets the host model drill
+into only what's relevant to the current step, instead of parsing a wall of
+context up front.
 
-Uses Anthropic structured tool-use when an API key is available; otherwise
+Uses Anthropic structured outputs when an API key is available; otherwise
 falls back to a deterministic heuristic so the system still works offline.
 """
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from forgent.registry.loader import AgentSpec, Registry
     from forgent.router.router import RoutingDecision
 
-PLANNER_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
+from forgent.llm import PLANNER, PLANNER_MODEL_DEFAULT, make_client, structured_call  # noqa: F401 (re-exported)
 
 # Cap on the recalled_memory *preview* we keep on the card. The host pulls
 # detail via memory_view -- we only need enough to let the model decide
@@ -107,43 +107,38 @@ class PlanCard:
     # ------------------------------------------------------------------
 
     def assignment_block(self) -> str:
-        """The visible card the host is instructed to echo to the user."""
-        sup_str = f" + {', '.join(self.supporting)}" if self.supporting else ""
-        forged_tag = " | newly forged" if self.forged else ""
-        mode_tag = " | heuristic" if self.heuristic else ""
-        return (
-            "```\n"
-            "forgent -- plan card ----------------------------------\n"
-            f"  knowledge:   {self.primary_agent}{sup_str}{forged_tag}\n"
-            f"  confidence:  {self.confidence:.0%}{mode_tag}\n"
-            f"  reason:      {self.routing_reasoning}\n"
-            f"  session:     {self.session_id[:8]}\n"
-            "-------------------------------------------------------\n"
-            "```"
-        )
+        """The visible card the host is instructed to echo to the user.
+
+        Open on the right so it never misaligns when a font renders the
+        block-drawing glyphs at a different width than ASCII.
+        """
+        tags = [t for t, on in (("forged", self.forged), ("heuristic", self.heuristic)) if on]
+        tag_str = f"  · {' · '.join(tags)}" if tags else ""
+        pack = self.primary_agent + (f"  + {', '.join(self.supporting)}" if self.supporting else "")
+        why = _wrap(self.routing_reasoning or "-", width=64)
+        why_lines = [f"│  why         {why[0]}"] + [f"│              {line}" for line in why[1:]]
+        summary = [
+            _count(len(self.steps), "step"),
+            _count(len(self.gotchas), "gotcha"),
+            _count(len(self.success_criteria), "check"),
+            f"memory {_count(len(self.memory_index), 'path')}" if self.memory_index else "no memory yet",
+        ]
+        lines = [
+            f"╭─ forgent · plan card ─── {self.session_id[:8]}",
+            f"│  pack        {pack}",
+            f"│  confidence  {_bar(self.confidence)}  {self.confidence:.0%}{tag_str}",
+            *why_lines,
+            f"╰─ {' · '.join(summary)}",
+        ]
+        return "```\n" + "\n".join(lines) + "\n```"
 
     def to_markdown(self) -> str:
-        """Full response body returned from the ``advise_task`` MCP tool."""
-        parts: list[str] = [self.assignment_block()]
+        """Full response body returned from the ``advise_task`` MCP tool.
 
-        parts.append(
-            "## DISPLAY THE BLOCK ABOVE TO THE USER\n\n"
-            "Copy the forgent plan card above into your response verbatim so "
-            "the user sees which knowledge pack was chosen. Then execute the "
-            "task below using your own tools, consulting the plan as a guide. "
-            "You are NOT adopting a persona -- you are working from a curated "
-            "plan that forgent built for this specific task.\n\n"
-            "**Memory is progressive.** The index below lists virtual paths "
-            "into forgent's project memory. Call `memory_view(path)` on any "
-            "path that looks relevant to your current step -- do not pull "
-            "everything up front. When you discover something future sessions "
-            "should know (file locations, conventions, gotchas), call "
-            "`memory_write(\"/notes/<topic>\", \"...\")` to leave a breadcrumb.\n\n"
-            "When the task is complete (success OR failure), call "
-            "`report_outcome` with the session id above so routing improves "
-            "over time.\n\n"
-            f"**Task:** {self.task}"
-        )
+        Order: the card, the task, the plan itself (what the host acts on),
+        memory, then the secondary material and the usage protocol last.
+        """
+        parts: list[str] = [self.assignment_block(), f"**Task:** {self.task}"]
 
         if self.knowledge_pack_summary:
             parts.append(
@@ -161,13 +156,39 @@ class PlanCard:
             parts.append(f"## Gotchas\n\n{gotchas_md}")
 
         if self.success_criteria:
-            sc_md = "\n".join(f"- {c}" for c in self.success_criteria)
+            sc_md = "\n".join(f"- [ ] {c}" for c in self.success_criteria)
             parts.append(f"## Success criteria\n\n{sc_md}")
 
+        if self.past_outcomes:
+            outcomes_md = "\n".join(f"- {o}" for o in self.past_outcomes)
+            parts.append(f"## Past outcomes on similar tasks\n\n{outcomes_md}")
+
+        # Memory index -- the primary memory surface since v0.3.
+        if self.memory_index:
+            idx_md = "\n".join(
+                f"- `{m.path}` -- {m.label}" for m in self.memory_index
+            )
+            parts.append(
+                "## Memory index\n\n"
+                "Open a path with `memory_view(path)` when it is relevant to your "
+                "current step.\n\n"
+                f"{idx_md}"
+            )
+        else:
+            parts.append(
+                "## Memory index\n\n_no prior memory for this project yet_"
+            )
+
+        # Inline preview only -- keep the card compact.
+        if self.recalled_memory:
+            parts.append(
+                "## Recalled memory (preview)\n\n"
+                "_Use `memory_view` on the index paths above for the full content._\n\n"
+                f"{self.recalled_memory}"
+            )
+
         if self.alternates:
-            # Collapse under a <details> because it's secondary info -- the
-            # user only reads it when they're curious WHY this pack was
-            # picked. Primary info (steps/gotchas) stays above the fold.
+            # Collapsed: users only open it when they wonder WHY this pack.
             alts_md = "\n".join(
                 f"- **{a.get('name', '')}** ({int(a.get('score', 0) * 100)}%) -- "
                 f"{a.get('reasoning', '')}"
@@ -204,33 +225,21 @@ class PlanCard:
                 )
             parts.append("\n\n".join(blocks))
 
-        if self.past_outcomes:
-            outcomes_md = "\n".join(f"- {o}" for o in self.past_outcomes)
-            parts.append(f"## Past outcomes on similar tasks\n\n{outcomes_md}")
-
-        # Memory index -- the primary memory surface in v0.3.
-        if self.memory_index:
-            idx_md = "\n".join(
-                f"- `{m.path}` -- {m.label}" for m in self.memory_index
-            )
-            parts.append(
-                "## Memory index\n\n"
-                "Browse any path that looks relevant via `memory_view(path)`. "
-                "Don't open everything -- pull what you need, when you need it.\n\n"
-                f"{idx_md}"
-            )
-        else:
-            parts.append(
-                "## Memory index\n\n_no prior memory for this project yet_"
-            )
-
-        # Inline preview only -- keep the card compact.
-        if self.recalled_memory:
-            parts.append(
-                "## Recalled memory (preview)\n\n"
-                "_Use `memory_view` on the index paths above for the full content._\n\n"
-                f"{self.recalled_memory}"
-            )
+        parts.append(
+            "## How to use this card\n\n"
+            "Show the plan card block at the top to the user so they can see "
+            "which knowledge pack was chosen, then execute the task with your "
+            "own tools, using the plan as your guide. This is a curated plan "
+            "for this specific task, not a persona.\n\n"
+            "- **Memory is progressive.** Open index paths with `memory_view` "
+            "when relevant rather than pulling everything up front.\n"
+            "- **Leave breadcrumbs.** When you discover something future sessions "
+            "should know (file locations, conventions, gotchas), call "
+            "`memory_write(\"/notes/<topic>\", \"...\")`.\n"
+            f"- **Close the loop.** When the task ends, successfully or not, call "
+            f"`report_outcome` with session id `{self.session_id}` so routing "
+            "improves over time."
+        )
 
         return "\n\n".join(parts)
 
@@ -270,15 +279,9 @@ class Planner:
         api_key: str | None = None,
     ):
         self.registry = registry
-        self.model = model or os.environ.get("FORGENT_PLANNER_MODEL", PLANNER_MODEL_DEFAULT)
+        self.model = PLANNER.model(model)
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self._client = None
-        if self.api_key:
-            try:
-                import anthropic  # noqa: WPS433
-                self._client = anthropic.Anthropic(api_key=self.api_key)
-            except Exception:
-                self._client = None
+        self._client = make_client(self.api_key)
 
     # ------------------------------------------------------------------
 
@@ -466,70 +469,62 @@ class Planner:
             f"Body (source material):\n{knowledge_excerpt}\n\n"
             f"## Memory index (paths the host can drill into)\n{index_block}\n\n"
             f"## Recalled memory (preview)\n{recalled_block}\n\n"
-            f"## Past outcomes on similar tasks\n{outcomes_block}\n\n"
-            "Return your plan by calling the `submit_plan` tool."
+            f"## Past outcomes on similar tasks\n{outcomes_block}"
         )
 
-        tool = {
-            "name": "submit_plan",
-            "description": "Submit the structured plan for this task.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "knowledge_pack_summary": {
-                        "type": "string",
-                        "description": "2-4 sentences of dense task-specific guidance distilled from the pack body.",
-                    },
-                    "steps": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "3-6 concrete, imperative steps. Each step is one line.",
-                    },
-                    "gotchas": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "2-5 specific things that commonly go wrong in this task class.",
-                    },
-                    "success_criteria": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "2-5 verifiable conditions that define done.",
-                    },
+        schema = {
+            "type": "object",
+            "properties": {
+                "knowledge_pack_summary": {
+                    "type": "string",
+                    "description": "2-4 sentences of dense task-specific guidance distilled from the pack body.",
                 },
-                "required": ["knowledge_pack_summary", "steps", "gotchas", "success_criteria"],
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "3-6 concrete, imperative steps. Each step is one line.",
+                },
+                "gotchas": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "2-5 specific things that commonly go wrong in this task class.",
+                },
+                "success_criteria": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "2-5 verifiable conditions that define done.",
+                },
             },
+            "required": ["knowledge_pack_summary", "steps", "gotchas", "success_criteria"],
         }
 
-        resp = self._client.messages.create(
+        payload = structured_call(
+            self._client,
+            role=PLANNER,
             model=self.model,
-            max_tokens=2048,
             system=system,
-            messages=[{"role": "user", "content": user}],
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "submit_plan"},
+            user=user,
+            schema=schema,
+            max_tokens=16000,
         )
-        for block in resp.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == "submit_plan":
-                payload = block.input or {}
-                return PlanCard(
-                    task=task,
-                    session_id=session_id,
-                    primary_agent=decision.primary,
-                    supporting=list(decision.supporting),
-                    confidence=decision.confidence,
-                    routing_reasoning=decision.reasoning,
-                    alternates=[a.to_dict() for a in decision.alternates],
-                    knowledge_pack_summary=str(payload.get("knowledge_pack_summary", "")).strip(),
-                    steps=[str(s) for s in payload.get("steps", []) if s][:8],
-                    gotchas=[str(g) for g in payload.get("gotchas", []) if g][:8],
-                    success_criteria=[str(c) for c in payload.get("success_criteria", []) if c][:8],
-                    memory_index=memory_index,
-                    recalled_memory=recalled_memory,
-                    past_outcomes=past_outcomes,
-                    forged=forged,
-                    heuristic=False,
-                )
-        raise RuntimeError("Planner LLM did not return a submit_plan tool_use block")
+        return PlanCard(
+            task=task,
+            session_id=session_id,
+            primary_agent=decision.primary,
+            supporting=list(decision.supporting),
+            confidence=decision.confidence,
+            routing_reasoning=decision.reasoning,
+            alternates=[a.to_dict() for a in decision.alternates],
+            knowledge_pack_summary=str(payload.get("knowledge_pack_summary", "")).strip(),
+            steps=[str(s) for s in payload.get("steps", []) if s][:8],
+            gotchas=[str(g) for g in payload.get("gotchas", []) if g][:8],
+            success_criteria=[str(c) for c in payload.get("success_criteria", []) if c][:8],
+            memory_index=memory_index,
+            recalled_memory=recalled_memory,
+            past_outcomes=past_outcomes,
+            forged=forged,
+            heuristic=False,
+        )
 
     # ------------------------------------------------------------------
     # Heuristic fallback
@@ -606,6 +601,22 @@ class Planner:
         return out
 
 
+def _bar(value: float, width: int = 10) -> str:
+    """Unicode meter for the card, e.g. 0.82 -> ########.. (block glyphs)."""
+    filled = max(0, min(width, round(value * width)))
+    return "█" * filled + "░" * (width - filled)
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    import textwrap
+
+    return textwrap.wrap(" ".join(text.split()), width=width) or ["-"]
+
+
 def _preview_recall(recalled: str) -> str:
     """Shrink a long recall dump to a preview. The index is the real surface."""
     if not recalled:
@@ -621,23 +632,27 @@ def _preview_recall(recalled: str) -> str:
 # tokens fast.
 _MAX_SUBPLAN_DEPTH = 1  # parent + one layer of children
 
-# Rough latency estimates (seconds) for each planner model's tool-use call
-# at typical token counts. Used only when the caller passes budget_ms.
+# Rough latency estimates (ms) for one planner call at typical token counts
+# and the default effort. Used only when the caller passes budget_ms.
 _MODEL_LATENCY_MS: dict[str, int] = {
-    "claude-opus-4-7": 12_000,
-    "claude-opus-4-6": 12_000,
-    "claude-sonnet-4-6": 6_000,
-    "claude-haiku-4-5-20251001": 2_500,
+    "claude-fable-5-1": 30_000,
+    "claude-opus-5-5": 15_000,
+    "claude-opus-5": 15_000,
+    "claude-opus-4-8": 12_000,
+    "claude-sonnet-5": 8_000,
     "claude-haiku-4-5": 2_500,
 }
 
-# Rough cost estimates in USD for a single planner call at ~4k input / 2k output.
+# Rough cost estimates in USD for one planner call at ~4k input / ~2k output
+# plus adaptive thinking. List prices per MTok (in/out): Fable 5.1 $10/$50,
+# Opus 5.5 $4/$20, Opus 5 and 4.8 $5/$25, Sonnet 5 $2/$10, Haiku 4.5 $1/$5.
 _MODEL_COST_USD: dict[str, float] = {
-    "claude-opus-4-7": 0.08,
-    "claude-opus-4-6": 0.08,
-    "claude-sonnet-4-6": 0.035,
-    "claude-haiku-4-5-20251001": 0.008,
-    "claude-haiku-4-5": 0.008,
+    "claude-fable-5-1": 0.20,
+    "claude-opus-5-5": 0.08,
+    "claude-opus-5": 0.10,
+    "claude-opus-4-8": 0.10,
+    "claude-sonnet-5": 0.04,
+    "claude-haiku-4-5": 0.015,
 }
 
 

@@ -27,7 +27,10 @@ personas; forgent ships *plans that learn*.
 src/forgent/
 ├── __init__.py
 ├── orchestrator.py          # thin facade: advise() -> PlanCard, record_outcome(), forge_agent()
-├── cli.py                   # `forgent advise "..."` Typer CLI
+├── llm.py                   # model defaults per role + structured_call() -- the ONLY Anthropic call path
+├── cli.py                   # Typer CLI: advise, setup, doctor, repair, uninstall, ...
+├── installer.py             # detect / plan / execute for `forgent setup` and friends
+├── hooks.py                 # `forgent hook <event>` handlers used by the plugin
 ├── mcp_server.py            # stdio MCP server exposing advise_task / report_outcome / ...
 ├── memory/
 │   └── store.py             # SQLite + FTS5 memory, includes OUTCOME type for feedback loop
@@ -41,8 +44,30 @@ src/forgent/
 └── planner/
     └── planner.py           # Planner + PlanCard — the heart of v2
 
+plugin/                      # Claude Code plugin: .mcp.json, skills/, hooks/, scripts/run.sh
+.claude-plugin/marketplace.json  # marketplace entry pointing at ./plugin
 sources/                     # cloned upstream repos (read-only inputs to curation)
 ```
+
+### Models and LLM calls
+
+All model access goes through `forgent/llm.py`. Defaults: router
+`claude-sonnet-5` (effort low), planner and forge `claude-opus-5-5`
+(effort medium / high), refusal fallback `claude-opus-5`. Override with
+`FORGENT_{ROUTER,PLANNER,FORGE}_{MODEL,EFFORT}` and `FORGENT_FALLBACK_MODEL`.
+
+- Use `structured_call(...)` with a JSON schema. Do **not** force
+  `tool_choice` (Opus 5.5 returns 400) and do not pass `thinking`.
+- Schemas are normalized by `strict_schema()`; keep them readable.
+- No client (no API key) means the deterministic heuristic path. Keep it working.
+
+### Install surface
+
+`forgent setup` installs exactly one channel per scope (plugin or bare
+MCP), never writes API keys into config, and records what it did in
+`~/.forgent/install-state.json`. `doctor` / `repair` / `uninstall` only
+touch recorded entries. Validate plugin changes with
+`claude plugin validate plugin --strict`.
 
 ### The v0.3 flow (progressive memory)
 

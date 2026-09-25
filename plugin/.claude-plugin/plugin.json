@@ -1,0 +1,19 @@
+{
+  "name": "forgent",
+  "version": "0.5.0",
+  "description": "Planning + knowledge layer for Claude Code: routes each task to a curated knowledge pack and returns a PlanCard (steps, gotchas, success criteria, project memory) that learns from reported outcomes.",
+  "author": {
+    "name": "Ali Al Aayedi",
+    "url": "https://github.com/alialaayedi"
+  },
+  "homepage": "https://github.com/alialaayedi/forgent",
+  "repository": "https://github.com/alialaayedi/forgent",
+  "license": "MIT",
+  "keywords": [
+    "planning",
+    "memory",
+    "mcp",
+    "knowledge-packs",
+    "agents"
+  ]
+}

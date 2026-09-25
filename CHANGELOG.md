@@ -8,6 +8,53 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.5.0] — 2026-09-25
+
+### Changed
+
+- **Models moved to the Claude 5 family.** Router defaults to
+  `claude-sonnet-5` (effort low); planner and forge default to
+  `claude-opus-5-5` (effort medium / high). `claude-opus-5` is the refusal
+  fallback. Every role is overridable with `FORGENT_{ROUTER,PLANNER,FORGE}_MODEL`
+  and `..._EFFORT`, plus `FORGENT_FALLBACK_MODEL`.
+- **Structured outputs replace forced tool calls.** All three LLM call sites
+  go through `forgent.llm.structured_call`, which uses
+  `output_config.format` (forced `tool_choice` is rejected by Opus 5.5).
+  A refusal is retried once on the fallback model, then falls back to the
+  heuristic path.
+- **Design refresh.** The PlanCard markdown opens with a compact card
+  (pack, confidence bar, reasoning, counts), success criteria are
+  checkboxes, and host instructions move to the end. `forgent advise`
+  renders one card instead of six stacked panels, and model text is no
+  longer parsed as rich markup (`[a, b]` used to vanish).
+- **Heuristic routing matches whole words.** The no-API-key matcher used
+  substrings, so e.g. a Stripe refund task routed to `mcp-fetch`.
+- **Outcomes carry their task text**, so keyword recall surfaces a past
+  failure for related tasks even when a different pack is picked.
+- `mcp>=1.2,<3` and `anthropic>=0.92,<2`; works with the mcp 2.x
+  `MCPServer` rename.
+- `scripts/install.sh` is now a thin bootstrap that installs the package and
+  runs `forgent setup`. `scripts/setup-mcp.sh` is deprecated.
+
+### Added
+
+- **Claude Code plugin** (`plugin/`, marketplace at `.claude-plugin/`):
+  the MCP server, `plan` / `outcome` / `configure` skills, and hooks.
+- **`forgent setup`**: a guided installer that shows a preflight plan,
+  picks one install channel (plugin or bare MCP) per scope, warns about
+  stacking, never writes API keys into config, and records what it
+  installed in `~/.forgent/install-state.json`.
+- **`forgent doctor` / `repair` / `uninstall`**, which only touch what setup recorded.
+- **Hooks with profiles** (`off` / `minimal` / `standard`): a short
+  SessionStart memory note, and a one-time Stop reminder to call
+  `report_outcome` for a planned session that was never closed.
+
+### Fixed
+
+- `forgent advise` suggested `forgent outcome <8-char prefix>`, which
+  recorded outcomes under a session id that does not exist. It now prints
+  the full id and the correct `--notes` flag.
+
 ## [0.1.0] — 2026-04-09
 
 The first public release. Everything below is new.
